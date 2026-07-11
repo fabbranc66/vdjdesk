@@ -1,0 +1,1303 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VDJ Year Updater – Import SortSpotify</title>
+<style>
+:root{
+  --bg:#0b1123;--panel:#151f3b;--line:#2d3d68;--text:#f3f6ff;--muted:#aab7d7;
+  --green:#87e2c0;--blue:#83aeff;--warn:#ffd37b;--red:#ffaaa9;
+}
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;color:var(--text);
+  background:
+    radial-gradient(circle at 14% 0,#24427f 0,transparent 38%),
+    radial-gradient(circle at 92% 0,#1c5d58 0,transparent 32%),
+    var(--bg);
+  font:15px Inter,Segoe UI,Arial,sans-serif;
+}
+.wrap{max-width:1440px;margin:auto;padding:28px 18px 48px}
+h1{margin:0;font-size:clamp(29px,4vw,45px);letter-spacing:-.04em}
+h1 span{color:var(--green)}
+p{max-width:980px;color:var(--muted);line-height:1.55}
+.card{
+  overflow:hidden;border:1px solid var(--line);border-radius:18px;background:rgba(21,31,59,.97);
+  box-shadow:0 18px 50px rgba(0,0,0,.28);margin-top:18px
+}
+.section{padding:16px;border-bottom:1px solid var(--line)}
+.section h2{font-size:16px;margin:0 0 7px}
+.hint{color:var(--muted);font-size:13px;line-height:1.45;margin:0 0 12px}
+.setup{display:grid;grid-template-columns:1fr 130px 1fr 180px;gap:10px}
+label{display:grid;gap:5px;color:var(--muted);font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+input,textarea{
+  width:100%;padding:9px 10px;background:#0b132a;color:var(--text);border:1px solid #2d3c67;
+  border-radius:8px;font:inherit
+}
+textarea{min-height:220px;resize:vertical;line-height:1.42}
+input:focus,textarea:focus{outline:none;border-color:var(--blue);box-shadow:0 0 0 3px rgba(131,174,255,.16)}
+.buttons{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:10px}
+button{
+  border:0;border-radius:9px;padding:10px 12px;background:var(--blue);color:#07121f;
+  font:inherit;font-weight:800;cursor:pointer;white-space:nowrap
+}
+button.update,.autoUpdate{background:var(--green)}
+button.ghost{background:#263a66;color:var(--text)}
+button.danger{background:#512a3b;color:#ffe3e8}
+button:hover{filter:brightness(1.08)}
+button:disabled{opacity:.45;cursor:not-allowed;filter:none}
+tr.running td{background:rgba(135,226,192,.10)}
+tr.done td{background:rgba(131,174,255,.06)}
+tr.skipped td{background:rgba(255,211,123,.08)}
+.count{margin-left:auto;color:var(--muted);font-size:13px}
+.bar{padding:13px 16px;display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.automix-option{display:flex;align-items:center;gap:7px;background:#213b53;border:1px solid #356578;border-radius:9px;padding:9px 11px;color:#d9fff0;font-size:13px;font-weight:800;white-space:nowrap}
+.automix-option input{width:17px;height:17px;accent-color:var(--green);padding:0}
+.tablewrap{overflow:auto}
+table{border-collapse:collapse;width:100%;min-width:1030px}
+th{background:#192648;color:#dde8ff;font-size:11px;text-transform:uppercase;letter-spacing:.07em;text-align:left}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{background:#20315b;color:#ffffff}
+th.sortable:focus{outline:2px solid var(--blue);outline-offset:-2px}
+.sort-arrow{display:inline-block;min-width:12px;color:var(--green);font-size:12px}
+th,td{padding:9px;border-bottom:1px solid rgba(45,61,104,.66)}
+td.n{color:var(--muted);width:43px}
+td.actions{width:255px;display:flex;gap:7px;white-space:nowrap}
+.progress-panel{padding:14px 16px;border-bottom:1px solid var(--line);background:rgba(8,15,33,.28)}
+.progress-top{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.progress-top strong{color:var(--green);font-size:14px}
+.progress-track{height:11px;margin-top:9px;overflow:hidden;border-radius:999px;background:#0a132a;border:1px solid #2d3c67}
+.progress-fill{width:0%;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--blue),var(--green));transition:width .18s ease}
+.progress-detail{margin-top:7px;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rating-cell{min-width:145px;white-space:nowrap}
+.rating-stars{color:var(--warn);font-size:17px;letter-spacing:1px;cursor:default}
+.status{padding:14px 16px;color:var(--muted);line-height:1.45;font-size:13px}
+.success{color:var(--green)}.warn{color:var(--warn)}.error{color:var(--red)}
+code{font-family:Consolas,monospace;background:#0a1329;border:1px solid #2c3b62;border-radius:5px;padding:2px 5px;color:#e1eaff}
+iframe{display:none}
+.empty{text-align:center;color:var(--muted);padding:35px}
+@media(max-width:740px){
+  .setup{grid-template-columns:1fr 1fr}
+  .setup label:first-child,.setup label:nth-child(3){grid-column:span 2}
+  .count{margin-left:0;width:100%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VDJ <span>Year Updater + Import SortSpotify</span></h1>
+  <p>Incolla le liste copiate da Sortlee: la pagina unisce <b>artista, data, popolarità, key e genere</b>. Con titoli unici nella cartella già aperta in VirtualDJ, un solo pulsante cerca il brano e aggiorna automaticamente i campi disponibili.</p>
+
+  <section class="card">
+    <div class="section">
+      <h2>1. Connessione a VirtualDJ</h2>
+      <div class="setup">
+        <label>Host Network Control<input id="host" value="http://127.0.0.1"></label>
+        <label>Porta<input id="port" value="9665" inputmode="numeric"></label>
+        <label>Password (solo se impostata)<input id="password" type="password" placeholder="Facoltativa"></label>
+        <label>Ritardo aggiornamento (ms)<input id="delayMs" value="1000" inputmode="numeric"></label>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>2. Incolla lista da SortSpotify</h2>
+      <p class="hint">Puoi incollare anche il testo completo con numerazione, righe vuote e date. Il parser pulisce automaticamente i titoli: rimuove <code>feat.</code>, parentesi, remix, edit, version, interlude e testo extra dopo il trattino. Esempio: <code>1&nbsp;&nbsp; TITOLO (feat. Artista) - Remix &nbsp;&nbsp; 2026-06-12</code>.</p>
+      <textarea id="source" placeholder="Incolla qui la lista copiata da SortSpotify..."></textarea>
+
+      <h2 style="margin-top:18px">Lista artisti completa (opzionale)</h2>
+      <p class="hint">Incolla qui una lista completa con <b>artista + titolo</b>, anche in ordine diverso. Il merge viene fatto per <b>titolo normalizzato</b>, quindi non per posizione. Formati supportati: <code>Artista - Titolo</code>, <code>Titolo - Artista</code> oppure testo Spotify copiato su più righe.</p>
+      <textarea id="artistsSource" placeholder="Esempi:
+El Alfa, Donaty, Orlando Moreno Feo - ELLAS SABEN YA
+Ronny GTA - No Se Dejan Mete Cabra
+La Mas Doll - A Dios La Gracia
+
+Oppure incolla un export Spotify con titolo e artista su righe separate."></textarea>
+
+      <h2 style="margin-top:18px">Lista popolarità (opzionale)</h2>
+      <p class="hint">Incolla un elenco con <b>titolo + valore popolarità</b>, anche in ordine diverso. Il merge viene fatto per titolo normalizzato. Formati supportati: <code>Titolo - 87</code>, <code>87 - Titolo</code>, <code>Titolo 87</code>. Il valore viene aggiunto alla colonna Popolarità.</p>
+      <textarea id="popularitySource" placeholder="Esempi:
+ELLAS SABEN YA - 87
+No Se Dejan Mete Cabra - 72
+A Dios La Gracia - 64"></textarea>
+
+      <h2 style="margin-top:18px">Lista chiavi musicali (opzionale)</h2>
+      <p class="hint">Incolla <b>titolo + chiave</b>, anche in ordine diverso. Il merge viene fatto per titolo normalizzato. Formati supportati: <code>Titolo - 8A</code>, <code>8A - Titolo</code>, <code>Titolo - F# minor</code>, <code>Titolo - C♯ minor</code>, <code>Titolo - 9B</code>.</p>
+      <textarea id="keySource" placeholder="Esempi:
+ELLAS SABEN YA - 8A
+No Se Dejan Mete Cabra - 11B
+A Dios La Gracia - F# minor"></textarea>
+
+      <h2 style="margin-top:18px">Lista generi (opzionale)</h2>
+      <p class="hint">Incolla <b>titolo + genere</b>. Il merge viene fatto per titolo normalizzato. Esempi: <code>Titolo - salsa</code>, <code>Titolo - timba</code>, <code>Titolo - bachata</code>.</p>
+      <textarea id="genreSource" placeholder="Esempi:
+ELLAS SABEN YA - dembow
+No Se Dejan Mete Cabra - reggaeton
+A Dios La Gracia - latin urban"></textarea>
+
+      <div class="buttons">
+        <label style="display:flex;align-items:center;gap:8px;text-transform:none;letter-spacing:0;font-size:13px;color:var(--muted);font-weight:700">
+          <input id="cleanTitles" type="checkbox" checked style="width:auto"> Pulisci titoli per ricerca VDJ
+        </label>
+        <button id="parseBtn" class="update">Importa e parsa lista</button>
+        <button id="sampleBtn" class="ghost">Carica esempio</button>
+        <button id="clearInputBtn" class="danger">Svuota testo</button>
+        <span id="parseInfo" class="count">Nessuna lista importata</span>
+      </div>
+    </div>
+
+    <div class="bar">
+      <button id="runAllBtn" class="update">▶ Esegui tutta la lista</button>
+      <button id="stopAllBtn" class="danger" disabled>■ Ferma sequenza</button>
+      <label class="automix-option" title="Dopo aver trovato e aggiornato il brano, lo aggiunge in fondo alla lista Automix di VirtualDJ">
+        <input id="addToAutomix" type="checkbox">
+        Aggiungi ad Automix
+      </label>
+      <label class="automix-option" title="Converte Popolarità 0-100 in Rating VirtualDJ da 0 a 5 stelle e lo aggiorna sul brano trovato">
+        <input id="setVdjRating" type="checkbox" checked>
+        Imposta classificazione VDJ
+      </label>
+      <label class="automix-option" title="Aggiorna il campo Key di VirtualDJ convertendo tutte le tonalità in Camelot (es. G# → 4B, G#m → 1A)">
+        <input id="setVdjKey" type="checkbox" checked>
+        Imposta Key VDJ
+      </label>
+      <label class="automix-option" title="Aggiorna il campo Genere del brano trovato in VirtualDJ">
+        <input id="setVdjGenre" type="checkbox" checked>
+        Imposta Genere VDJ
+      </label>
+      <button id="clearSearchBtn" class="ghost">Pulisci ricerca VDJ</button>
+      <button id="exportBtn" class="ghost">Esporta CSV</button>
+      <button id="clearRowsBtn" class="danger">Svuota tabella</button>
+      <span class="count">Automatico: cerca con artista + titolo → aggiorna Year, rating, Key e Genere → opzionale: Automix → passa al successivo.</span>
+    </div>
+    <div id="progressPanel" class="progress-panel" aria-live="polite">
+      <div class="progress-top">
+        <span id="progressLabel">Pronto</span>
+        <strong id="progressPercent">0%</strong>
+      </div>
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+      <div id="progressDetail" class="progress-detail">Importa una lista per iniziare.</div>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Azione</th>
+            <th class="sortable" data-sort="artist" role="button" tabindex="0">Artista <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="title" role="button" tabindex="0">Titolo <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="date" role="button" tabindex="0">Data release <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="year" role="button" tabindex="0">Anno <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="popularity" role="button" tabindex="0">Popolarità <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="rating" role="button" tabindex="0">Classificazione VDJ <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="key" role="button" tabindex="0">Key <span class="sort-arrow"></span></th>
+            <th class="sortable" data-sort="genre" role="button" tabindex="0">Genere <span class="sort-arrow"></span></th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr class="empty-row"><td colspan="10" class="empty">Incolla la lista e premi “Importa e parsa lista”.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div id="status" class="status">Pronto. Apri prima in VirtualDJ la cartella contenente questi brani.</div>
+  </section>
+</div>
+
+<iframe name="vdjSender"></iframe>
+
+<script>
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+const tbody = $('#rows');
+
+function clean(value){
+  return String(value || '')
+    .replace(/[\r\n]/g, ' ')
+    .replace(/"/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function setStatus(message, kind=''){
+  $('#status').innerHTML = kind ? `<span class="${kind}">${message}</span>` : message;
+}
+
+function endpoint(){
+  const host = $('#host').value.trim().replace(/\/$/, '');
+  const port = $('#port').value.trim() || '80';
+  return host + ':' + port + '/execute';
+}
+
+/* Stesso invio del Search Sender già funzionante */
+function run(script){
+  const form = document.createElement('form');
+  form.method = 'GET';
+  form.action = endpoint();
+  form.target = 'vdjSender';
+  form.style.display = 'none';
+
+  const command = document.createElement('input');
+  command.name = 'script';
+  command.value = script;
+  form.appendChild(command);
+
+  const password = $('#password').value;
+  if(password){
+    const bearer = document.createElement('input');
+    bearer.name = 'bearer';
+    bearer.value = password;
+    form.appendChild(bearer);
+  }
+
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+}
+
+function escapeHtml(text){
+  return String(text ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function popularityToRating(value){
+  const popularity = Number.parseFloat(String(value ?? '').replace(',', '.'));
+  if(!Number.isFinite(popularity)) return 0;
+  // Interpolazione lineare 0-100 -> 0-5, poi arrotondamento all'intera stella più vicina.
+  return Math.max(0, Math.min(5, Math.round(popularity / 20)));
+}
+
+function ratingToStars(rating){
+  const r = Math.max(0, Math.min(5, Number(rating) || 0));
+  return '★'.repeat(r) + '☆'.repeat(5 - r);
+}
+
+function updateRatingDisplay(row){
+  const popularityInput = $('.popularity', row);
+  const ratingInput = $('.rating', row);
+  const stars = $('.rating-stars', row);
+  if(!popularityInput || !ratingInput || !stars) return;
+
+  const rating = popularityToRating(popularityInput.value);
+  ratingInput.value = rating;
+  stars.dataset.rating = String(rating);
+  stars.textContent = ratingToStars(rating);
+  stars.title = popularityInput.value === ''
+    ? 'Popolarità assente: 0 stelle'
+    : `Popolarità ${popularityInput.value}/100 → classificazione VDJ ${rating}/5`;
+}
+
+function addRow(data, index){
+  const tr = document.createElement('tr');
+  tr.dataset.trackId = data.id || '';
+  tr.dataset.searchQuery = data.searchQuery || '';
+  tr.dataset.filePath = data.filePath || '';
+  tr.innerHTML = `
+    <td class="n">${index}</td>
+    <td class="actions">
+      <button class="autoUpdate">Cerca + aggiorna</button>
+      <button class="manualFind">Solo cerca</button>
+    </td>
+    <td><input class="artist" placeholder="Artista (opzionale)" value="${escapeHtml(data.artist || '')}"></td>
+    <td><input class="title" value="${escapeHtml(data.title || '')}"></td>
+    <td><input class="date" type="date" value="${escapeHtml(data.date || '')}"></td>
+    <td><input class="year" value="${escapeHtml(data.year || '')}" inputmode="numeric" maxlength="4"></td>
+    <td><input class="popularity" value="${escapeHtml(data.popularity || '')}" inputmode="numeric" maxlength="3" min="0" max="100" placeholder="0-100"></td>
+    <td class="rating-cell"><span class="rating-stars" data-rating="0">☆☆☆☆☆</span><input class="rating" type="hidden" value="0"></td>
+    <td><input class="key" value="${escapeHtml(data.key || '')}" placeholder="es. 8A / G# / F# minor"></td>
+    <td><input class="genre" value="${escapeHtml(data.genre || '')}" placeholder="es. salsa / timba"></td>
+  `;
+  updateRatingDisplay(tr);
+  tbody.appendChild(tr);
+}
+
+function resetTable(){
+  tbody.innerHTML = '';
+}
+
+function renumber(){
+  $$('.n', tbody).forEach((cell, idx) => cell.textContent = idx + 1);
+}
+
+function cleanTrackTitle(title){
+  let value = clean(title);
+
+  value = value
+    .replace(/\s*[\(\[\{]\s*(?:feat\.?|ft\.?|featuring|with)\b[\s\S]*?[\)\]\}]/ig, '')
+    .replace(/\s*[\(\[\{][^\)\]\}]*?(?:remix|edit|version|interlude|sped up|slowed|live|acoustic|instrumental|radio)[^\)\]\}]*?[\)\]\}]/ig, '');
+
+  value = value.replace(/\s+(?:feat\.?|ft\.?|featuring|with)\s+.*$/ig, '');
+
+  value = value.replace(/\s*[-–—]\s*(?:remix|edit|version|interlude|radio edit|extended mix|original mix|live|acoustic|instrumental|sped up|slowed(?:\s*\+\s*reverb)?)\b.*$/ig, '');
+
+  value = value.replace(/\s*[-–—]\s*(?:official|audio|video|visualizer|clean|explicit)\b.*$/ig, '');
+
+  value = value
+    .replace(/\s{2,}/g, ' ')
+    .replace(/[\s\-–—:;,]+$/g, '')
+    .trim();
+
+  return value || clean(title);
+}
+
+function audioBasename(path){
+  let value = clean(String(path || '').replace(/^.*[\\\/]/, ''));
+  for(let i = 0; i < 3; i++){
+    const next = value.replace(/\.(?:mp3|mpeg|mp4|m4a|aac|ogg|opus|wma|flac|wav|aiff?|alac)$/i, '');
+    if(next === value) break;
+    value = next;
+  }
+  return value;
+}
+
+function buildVdjSearchQuery(track){
+  const path = String(track.file_path || track.filePath || '');
+  const drive = (path.match(/^([a-z]):\\/i)?.[1] || '').toLowerCase();
+  let name = audioBasename(track.file_name || path);
+  name = name.replace(/\s+[-–—]\s+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  if(name) return clean(`${drive ? `${drive}: ` : ''}${name}`);
+  return clean(`${track.artist || ''} ${track.title || ''}`);
+}
+
+function normalizeMatchText(value){
+  return cleanTrackTitle(String(value || ''))
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function parseArtistCatalog(text){
+  const raw = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/\u00a0/g, ' ').replace(/\t+/g, ' ').replace(/\s{2,}/g, ' ').trim())
+    .filter(Boolean);
+
+  const entries = [];
+  const ignored = /^(track|title|titolo|artist|artista|artists|artisti|album|date|data|release date|status|download ready)$/i;
+
+  raw.forEach((line, index) => {
+    if (ignored.test(line) || /^\d+$/.test(line)) return;
+    const parts = line.split(/\s+[-–—]\s+/).map(x => x.trim()).filter(Boolean);
+    if (parts.length === 2) entries.push({ raw: line, left: parts[0], right: parts[1], index, alternating: false });
+  });
+
+  // Pair adjacent text rows for copied Spotify-style exports: title line + artist line.
+  for (let i = 0; i < raw.length - 1; i++) {
+    const first = raw[i], second = raw[i + 1];
+    if (ignored.test(first) || ignored.test(second) || /^\d+$/.test(first) || /^\d+$/.test(second)) continue;
+    if (/^20\d{2}-\d{2}-\d{2}$/.test(first) || /^20\d{2}-\d{2}-\d{2}$/.test(second)) continue;
+    entries.push({ raw: `${second} - ${first}`, left: second, right: first, index: i, alternating: true });
+  }
+  return entries;
+}
+
+function findArtistForTrack(trackTitle, catalog){
+  const wanted = normalizeMatchText(trackTitle);
+  if (!wanted) return {artist:'', state:'missing'};
+  const candidates = [];
+
+  for (const entry of catalog) {
+    const leftNorm = normalizeMatchText(entry.left);
+    const rightNorm = normalizeMatchText(entry.right);
+    const leftExact = leftNorm === wanted;
+    const rightExact = rightNorm === wanted;
+    const leftContains = leftNorm && (leftNorm.includes(wanted) || wanted.includes(leftNorm));
+    const rightContains = rightNorm && (rightNorm.includes(wanted) || wanted.includes(rightNorm));
+
+    if ((leftExact || leftContains) && !(rightExact || rightContains)) {
+      candidates.push({artist: entry.right, score: leftExact ? 4 : 2});
+    }
+    if ((rightExact || rightContains) && !(leftExact || leftContains)) {
+      candidates.push({artist: entry.left, score: rightExact ? 4 : 2});
+    }
+    if (entry.alternating && (rightExact || rightContains)) {
+      candidates.push({artist: entry.left, score: rightExact ? 5 : 3});
+    }
+  }
+
+  if (!candidates.length) return {artist:'', state:'not_found'};
+  candidates.sort((a,b) => b.score - a.score);
+  const best = candidates[0];
+  const sameScore = candidates.filter(c => c.score === best.score && normalizeMatchText(c.artist) !== normalizeMatchText(best.artist));
+  return {artist: best.artist, state: sameScore.length ? 'ambiguous' : 'found'};
+}
+
+function parsePopularityCatalog(text){
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/\u00a0/g, ' ').replace(/\t+/g, ' ').replace(/\s{2,}/g, ' ').trim())
+    .filter(Boolean);
+
+  const entries = [];
+  for(const line of lines){
+    if(/^(title|titolo|popolarita|popolarità|popularity|score|punteggio)$/i.test(line)) continue;
+
+    // titolo - 87 / titolo: 87 / titolo 87
+    let match = line.match(/^(.+?)\s*(?:[-–—:]\s*|\s+)(\d{1,3})$/);
+    if(match){
+      const score = Number.parseInt(match[2], 10);
+      if(Number.isFinite(score) && score >= 0 && score <= 100){
+        entries.push({title: match[1].trim(), popularity: score});
+        continue;
+      }
+    }
+
+    // 87 - titolo / 87 titolo
+    match = line.match(/^(\d{1,3})\s*(?:[-–—:]\s*|\s+)(.+)$/);
+    if(match){
+      const score = Number.parseInt(match[1], 10);
+      if(Number.isFinite(score) && score >= 0 && score <= 100){
+        entries.push({title: match[2].trim(), popularity: score});
+      }
+    }
+  }
+  return entries;
+}
+
+function findPopularityForTrack(trackTitle, catalog){
+  const wanted = normalizeMatchText(trackTitle);
+  if(!wanted) return {popularity:'', state:'missing'};
+
+  const candidates = catalog
+    .map(entry => {
+      const normalized = normalizeMatchText(entry.title);
+      const exact = normalized === wanted;
+      const partial = normalized && (normalized.includes(wanted) || wanted.includes(normalized));
+      return {entry, score: exact ? 4 : partial ? 2 : 0};
+    })
+    .filter(item => item.score > 0)
+    .sort((a,b) => b.score - a.score);
+
+  if(!candidates.length) return {popularity:'', state:'not_found'};
+  const best = candidates[0];
+  const ties = candidates.filter(item => item.score === best.score && item.entry.popularity !== best.entry.popularity);
+  return {
+    popularity: String(best.entry.popularity),
+    state: ties.length ? 'ambiguous' : 'found'
+  };
+}
+
+function parseGenreCatalog(text){
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/\u00a0/g, ' ').replace(/\t+/g, ' - ').replace(/\s{2,}/g, ' ').trim())
+    .filter(Boolean);
+
+  const entries = [];
+  for(const line of lines){
+    if(/^(title|titolo|genre|genere)$/i.test(line)) continue;
+    const match = line.match(/^(.+?)\s*(?:[-–—:])\s*(.+)$/);
+    if(!match) continue;
+    const title = match[1].trim();
+    const genre = match[2].trim();
+    if(title && genre && genre !== '-') entries.push({title, genre});
+  }
+  return entries;
+}
+
+function findGenreForTrack(trackTitle, catalog){
+  const wanted = normalizeMatchText(trackTitle);
+  if(!wanted) return {genre:'', state:'missing'};
+
+  const candidates = catalog
+    .map(entry => {
+      const normalized = normalizeMatchText(entry.title);
+      const exact = normalized === wanted;
+      const partial = normalized && (normalized.includes(wanted) || wanted.includes(normalized));
+      return {entry, score: exact ? 4 : partial ? 2 : 0};
+    })
+    .filter(item => item.score > 0)
+    .sort((a,b) => b.score - a.score);
+
+  if(!candidates.length) return {genre:'', state:'not_found'};
+  const best = candidates[0];
+  const ties = candidates.filter(item => item.score === best.score && normalizeMatchText(item.entry.genre) !== normalizeMatchText(best.entry.genre));
+  return {genre:best.entry.genre, state:ties.length ? 'ambiguous' : 'found'};
+}
+
+function normalizeKeyValue(value){
+  let key = clean(value)
+    // Normalizza simboli Unicode e diciture diverse.
+    .replaceAll('♯', '#')
+    .replaceAll('♭', 'b')
+    .replaceAll('𝄪', '##')
+    .replaceAll('𝄫', 'bb')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Se è già Camelot, lascia invariato.
+  if(/^(?:1[0-2]|[1-9])[AB]$/i.test(key)) return key.toUpperCase();
+
+  // Esempi gestiti: G#, G# minor, F#m, Db, Bb major.
+  key = key
+    .replace(/\bminor\b/ig, 'm')
+    .replace(/\bmin\b/ig, 'm')
+    .replace(/\bmajor\b/ig, '')
+    .replace(/\bmaj\b/ig, '')
+    .replace(/\s+/g, '')
+    .trim();
+
+  const match = key.match(/^([A-G])(#|b)?(m)?$/i);
+  if(!match) return '';
+
+  const root = match[1].toUpperCase() + (match[2] || '');
+  const isMinor = Boolean(match[3]);
+
+  // Conversione completa tonalità musicale -> Camelot.
+  const majorToCamelot = {
+    'C':'8B', 'B#':'8B',
+    'Db':'3B', 'C#':'3B',
+    'D':'10B',
+    'Eb':'5B', 'D#':'5B',
+    'E':'12B', 'Fb':'12B',
+    'F':'7B', 'E#':'7B',
+    'Gb':'2B', 'F#':'2B',
+    'G':'9B',
+    'Ab':'4B', 'G#':'4B',
+    'A':'11B',
+    'Bb':'6B', 'A#':'6B',
+    'B':'1B', 'Cb':'1B'
+  };
+
+  const minorToCamelot = {
+    'A':'8A',
+    'Bb':'3A', 'A#':'3A',
+    'B':'10A', 'Cb':'10A',
+    'C':'5A', 'B#':'5A',
+    'Db':'12A', 'C#':'12A',
+    'D':'7A',
+    'Eb':'2A', 'D#':'2A',
+    'E':'9A', 'Fb':'9A',
+    'F':'4A', 'E#':'4A',
+    'Gb':'11A', 'F#':'11A',
+    'G':'6A',
+    'Ab':'1A', 'G#':'1A'
+  };
+
+  return (isMinor ? minorToCamelot : majorToCamelot)[root] || '';
+}
+
+function parseKeyCatalog(text){
+  const lines = text
+    .split(/\r?\n/)
+    .map(line => line.replace(/\u00a0/g, ' ').replace(/\t+/g, ' ').replace(/\s{2,}/g, ' ').trim())
+    .filter(Boolean);
+
+  const entries = [];
+  for(const line of lines){
+    if(/^(title|titolo|key|chiave|musical key|tonalita|tonalità)$/i.test(line)) continue;
+
+    // Title - Key / Title: Key
+    let match = line.match(/^(.+?)\s*(?:[-–—:]\s*)(.+)$/);
+    if(match){
+      const left = match[1].trim();
+      const right = match[2].trim();
+      const looksLikeKeyRight = /^(?:1[0-2]|[1-9])[AB]$|^[A-G](?:#|♯|b|♭)?\s*(?:major|minor|maj|min|m)?$/i.test(right);
+      const looksLikeKeyLeft = /^(?:1[0-2]|[1-9])[AB]$|^[A-G](?:#|♯|b|♭)?\s*(?:major|minor|maj|min|m)?$/i.test(left);
+
+      if(looksLikeKeyRight) {
+        entries.push({title:left, key:normalizeKeyValue(right)});
+        continue;
+      }
+      if(looksLikeKeyLeft) {
+        entries.push({title:right, key:normalizeKeyValue(left)});
+        continue;
+      }
+    }
+
+    // Title 8A / Title F# minor
+    match = line.match(/^(.+?)\s+((?:1[0-2]|[1-9])[AB]|[A-G](?:#|♯|b|♭)?\s*(?:major|minor|maj|min|m)?)$/i);
+    if(match){
+      entries.push({title:match[1].trim(), key:normalizeKeyValue(match[2])});
+    }
+  }
+  return entries;
+}
+
+function findKeyForTrack(trackTitle, catalog){
+  const wanted = normalizeMatchText(trackTitle);
+  if(!wanted) return {key:'', state:'missing'};
+
+  const candidates = catalog
+    .map(entry => {
+      const normalized = normalizeMatchText(entry.title);
+      const exact = normalized === wanted;
+      const partial = normalized && (normalized.includes(wanted) || wanted.includes(normalized));
+      return {entry, score: exact ? 4 : partial ? 2 : 0};
+    })
+    .filter(item => item.score > 0)
+    .sort((a,b) => b.score - a.score);
+
+  if(!candidates.length) return {key:'', state:'not_found'};
+  const best = candidates[0];
+  const ties = candidates.filter(item => item.score === best.score && item.entry.key !== best.entry.key);
+  return {key: best.entry.key, state: ties.length ? 'ambiguous' : 'found'};
+}
+
+function parseSortSpotify(text){
+  const lines = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  const output = [];
+  let pendingTitle = '';
+
+  // Gestisce sia righe "1 TITOLO 2026-06-12" sia formato su più righe.
+  for(let i = 0; i < lines.length; i++){
+    let line = lines[i]
+      .replace(/\u00a0/g, ' ')
+      .replace(/\t+/g, ' ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+
+    // Ignora numero di classifica isolato.
+    if(/^\d+$/.test(line)) continue;
+
+    // Formato compatto: "1 Titolo 2026-06-12" o "Titolo 2026-06-12"
+    const inline = line.match(/^(?:\d+\s+)?(.+?)\s+(20\d{2}-\d{2}-\d{2})$/);
+    if(inline){
+      output.push({
+        artist: '',
+        title: ($('#cleanTitles').checked ? cleanTrackTitle(inline[1].replace(/^\d+\s+/, '').trim()) : inline[1].replace(/^\d+\s+/, '').trim()),
+        date: inline[2],
+        year: inline[2].slice(0,4)
+      });
+      pendingTitle = '';
+      continue;
+    }
+
+    // Riga solo data: collega alla riga titolo precedente.
+    const dateOnly = line.match(/^(20\d{2}-\d{2}-\d{2})$/);
+    if(dateOnly && pendingTitle){
+      output.push({
+        artist: '',
+        title: ($('#cleanTitles').checked ? cleanTrackTitle(pendingTitle) : pendingTitle),
+        date: dateOnly[1],
+        year: dateOnly[1].slice(0,4)
+      });
+      pendingTitle = '';
+      continue;
+    }
+
+    // Scarta righe palesemente di UI / informazioni non musicali.
+    if(/^(prev|next|advertisement|go to recommendations|add filters|show advanced options|support rym|view subscription options|saved charts|live)$/i.test(line)){
+      continue;
+    }
+
+    // Riga titolo candidata: rimuove eventuale numero iniziale.
+    const candidate = line.replace(/^\d+\s+/, '').trim();
+    if(candidate && !/^20\d{2}-\d{2}-\d{2}$/.test(candidate)){
+      pendingTitle = candidate;
+    }
+  }
+
+  // Deduplica identici consecutivi, lasciando però la lista originale se un titolo ricompare distante.
+  return output.filter((item, idx, arr) =>
+    idx === 0 || item.title !== arr[idx-1].title || item.date !== arr[idx-1].date
+  );
+}
+
+function importList(){
+  const text = $('#source').value.trim();
+  if(!text){
+    setStatus('Incolla prima la lista di SortSpotify.', 'warn');
+    return;
+  }
+
+  const tracks = parseSortSpotify(text);
+  if(!tracks.length){
+    setStatus('Non ho trovato righe con titolo e data nel formato SortSpotify. Controlla che nel testo siano presenti date tipo 2026-06-12.', 'error');
+    return;
+  }
+
+  const artistCatalog = parseArtistCatalog($('#artistsSource').value);
+  const popularityCatalog = parsePopularityCatalog($('#popularitySource').value);
+  const keyCatalog = parseKeyCatalog($('#keySource').value);
+  const genreCatalog = parseGenreCatalog($('#genreSource').value);
+  let matchedArtists = 0;
+  let ambiguousArtists = 0;
+  let matchedPopularity = 0;
+  let ambiguousPopularity = 0;
+  let matchedKeys = 0;
+  let ambiguousKeys = 0;
+  let matchedGenres = 0;
+  let ambiguousGenres = 0;
+
+  tracks.forEach(track => {
+    const artistResult = findArtistForTrack(track.title, artistCatalog);
+    track.artist = artistResult.artist || '';
+    track.artistMatchState = artistResult.state;
+    if(artistResult.state === 'found') matchedArtists++;
+    if(artistResult.state === 'ambiguous') ambiguousArtists++;
+
+    const popularityResult = findPopularityForTrack(track.title, popularityCatalog);
+    track.popularity = popularityResult.popularity || '';
+    track.popularityMatchState = popularityResult.state;
+    if(popularityResult.state === 'found') matchedPopularity++;
+    if(popularityResult.state === 'ambiguous') ambiguousPopularity++;
+
+    const keyResult = findKeyForTrack(track.title, keyCatalog);
+    track.key = keyResult.key || '';
+    track.keyMatchState = keyResult.state;
+    if(keyResult.state === 'found') matchedKeys++;
+    if(keyResult.state === 'ambiguous') ambiguousKeys++;
+
+    const genreResult = findGenreForTrack(track.title, genreCatalog);
+    track.genre = genreResult.genre || '';
+    track.genreMatchState = genreResult.state;
+    if(genreResult.state === 'found') matchedGenres++;
+    if(genreResult.state === 'ambiguous') ambiguousGenres++;
+  });
+
+  resetTable();
+  tracks.forEach((track, i) => addRow(track, i + 1));
+
+  const notices = [];
+  let warning = false;
+  if(artistCatalog.length){
+    const missingArtists = tracks.length - matchedArtists - ambiguousArtists;
+    notices.push(`Artisti: <b>${matchedArtists}</b> trovati${ambiguousArtists ? ` · <b>${ambiguousArtists}</b> da controllare` : ''}${missingArtists ? ` · <b>${missingArtists}</b> senza match` : ''}`);
+    warning = warning || Boolean(ambiguousArtists || missingArtists);
+  }
+  if(popularityCatalog.length){
+    const missingPopularity = tracks.length - matchedPopularity - ambiguousPopularity;
+    notices.push(`Popolarità: <b>${matchedPopularity}</b> trovate${ambiguousPopularity ? ` · <b>${ambiguousPopularity}</b> da controllare` : ''}${missingPopularity ? ` · <b>${missingPopularity}</b> senza match` : ''}`);
+    warning = warning || Boolean(ambiguousPopularity || missingPopularity);
+  }
+  if(keyCatalog.length){
+    const missingKeys = tracks.length - matchedKeys - ambiguousKeys;
+    notices.push(`Key: <b>${matchedKeys}</b> trovate${ambiguousKeys ? ` · <b>${ambiguousKeys}</b> da controllare` : ''}${missingKeys ? ` · <b>${missingKeys}</b> senza match` : ''}`);
+    warning = warning || Boolean(ambiguousKeys || missingKeys);
+  }
+  if(genreCatalog.length){
+    const missingGenres = tracks.length - matchedGenres - ambiguousGenres;
+    notices.push(`Generi: <b>${matchedGenres}</b> trovati${ambiguousGenres ? ` · <b>${ambiguousGenres}</b> da controllare` : ''}${missingGenres ? ` · <b>${missingGenres}</b> senza match` : ''}`);
+    warning = warning || Boolean(ambiguousGenres || missingGenres);
+  }
+  if(notices.length){
+    setStatus(`Merge per titolo — ${notices.join(' · ')}.`, warning ? 'warn' : 'success');
+  }
+  $('#parseInfo').textContent = `${tracks.length} brani importati`;
+  updateProgress(0, tracks.length, `${tracks.length} brani pronti per la sequenza.`);
+  const artistCount = tracks.filter(track => track.artist).length;
+  if(!artistCatalog.length && !popularityCatalog.length && !keyCatalog.length && !genreCatalog.length){
+    setStatus(`Importati <b>${tracks.length}</b> brani. I titoli sono stati ripuliti per la ricerca VDJ; puoi modificare artista, titolo, anno e popolarità a mano in tabella se serve.`, 'success');
+  }
+}
+
+function searchRow(row){
+  const directQuery = clean(row.dataset.searchQuery || '');
+  if(directQuery){
+    run(`search "${directQuery}"`);
+    return directQuery;
+  }
+
+  // Per sicurezza la ricerca manuale parte solo con artista E titolo compilati.
+  const artist = clean($('.artist', row).value);
+  const title = clean($('.title', row).value);
+
+  if(!artist || !title){
+    setStatus(
+      !artist && !title
+        ? 'Ricerca non eseguita: artista e titolo mancanti.'
+        : !artist
+          ? 'Ricerca non eseguita: artista mancante.'
+          : 'Ricerca non eseguita: titolo mancante.',
+      'warn'
+    );
+    return false;
+  }
+
+  // Per VDJ la ricerca è più affidabile con i due campi come parole chiave,
+  // senza il trattino letterale: artista + titolo.
+  const query = clean(`${artist} ${title}`);
+  run(`search "${query}"`);
+  return query;
+}
+
+function addSelectedToAutomix(){
+  if(!$('#addToAutomix').checked) return false;
+  // playlist_add aggiunge il brano correntemente selezionato nel browser alla lista Automix.
+  run('playlist_add');
+  return true;
+}
+
+function setSelectedVdjRating(row){
+  if(!$('#setVdjRating').checked) return false;
+  const popularity = clean($('.popularity', row).value);
+  if(popularity === '') return false;
+
+  const rating = popularityToRating(popularity);
+  run(`browsed_song "rating" "${rating}"`);
+  return rating;
+}
+
+function setSelectedVdjKey(row){
+  if(!$('#setVdjKey').checked) return false;
+  const key = normalizeKeyValue($('.key', row).value);
+  if(!key) return false;
+
+  run(`browsed_song "key" "${key}"`);
+  return key;
+}
+
+function setSelectedVdjGenre(row){
+  if(!$('#setVdjGenre').checked) return false;
+  const genre = clean($('.genre', row).value);
+  if(!genre || genre === '-') return false;
+
+  run(`browsed_song "genre" "${genre}"`);
+  return genre;
+}
+
+async function updateYear(row){
+  const year = clean($('.year', row).value);
+  if(!/^\d{4}$/.test(year)){
+    setStatus('Anno non valido: usa quattro cifre.', 'warn');
+    return false;
+  }
+
+  const trackId = Number(row.dataset.trackId || 0);
+  if(trackId){
+    const response = await fetch('../api.php?action=touch-track-file',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:trackId})});
+    const result = await response.json();
+    if(!response.ok || result.error){setStatus(result.error || 'Data del file non aggiornata.','warn');return false}
+  }
+
+  // Ogni comando lavora sul brano ancora selezionato dalla ricerca corrente.
+  // Nel ciclo completo questa funzione viene attesa prima di cercare il brano dopo.
+  run(`browsed_song "year" "${year}"`);
+  await sleep(260);
+
+  const popularity = clean($('.popularity', row).value);
+  if($('#setVdjRating').checked && popularity !== ''){
+    run(`browsed_song "rating" "${popularityToRating(popularity)}"`);
+    await sleep(260);
+  }
+
+  const safeKey = normalizeKeyValue($('.key', row).value);
+  if($('#setVdjKey').checked && safeKey){
+    run(`browsed_song "key" "${safeKey}"`);
+    await sleep(260);
+  }
+
+  const genre = clean($('.genre', row).value);
+  if($('#setVdjGenre').checked && genre && genre !== '-'){
+    run(`browsed_song "genre" "${genre}"`);
+    await sleep(260);
+  }
+
+  run('browsed_song "info" "#N"');
+  await sleep(500);
+  searchRow(row);
+  await sleep(350);
+
+  if($('#addToAutomix').checked){
+    run('playlist_add');
+    await sleep(320);
+  }
+
+  return year;
+}
+
+function getDelay(){
+  const value = Number.parseInt($('#delayMs').value, 10);
+  // Limite prudente: almeno 250ms, massimo 5 secondi.
+  return Number.isFinite(value) ? Math.min(5000, Math.max(250, value)) : 1000;
+}
+
+function autoSearchAndUpdate(row){
+  const title = searchRow(row);
+  if(!title) return;
+
+  const year = clean($('.year', row).value);
+  if(!/^\d{4}$/.test(year)){
+    setStatus('Ricerca inviata, ma anno non valido: correggilo prima di aggiornare.', 'warn');
+    return;
+  }
+
+  const delay = getDelay();
+  const genre = clean($('.genre', row).value);
+  setStatus(
+    `Ricerca inviata nella cartella aperta: <code>${escapeHtml(title)}</code>. ` +
+    `Aggiorno <code>Year = ${year}</code>${$('#setVdjGenre').checked && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${$('#addToAutomix').checked ? ' e aggiungo ad Automix' : ''} tra ${delay} ms…`,
+    'success'
+  );
+
+  window.setTimeout(async () => {
+    const sentYear = await updateYear(row);
+    if(sentYear){
+      const titleNow = clean($('.title', row).value);
+      setStatus(
+        `Aggiornato automaticamente: <code>${escapeHtml(titleNow)}</code> → ` +
+        `<code>Year ${sentYear}</code>${$('#setVdjRating').checked && clean($('.popularity', row).value) !== '' ? ' + classificazione' : ''}${$('#setVdjGenre').checked && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${$('#addToAutomix').checked ? ' + Automix' : ''}.`,
+        'success'
+      );
+    }
+  }, delay);
+}
+
+
+function updateProgress(done, total, detail='', state='running'){
+  const safeTotal = Math.max(0, Number(total) || 0);
+  const safeDone = Math.max(0, Math.min(Number(done) || 0, safeTotal || Number(done) || 0));
+  const percent = safeTotal ? Math.round((safeDone / safeTotal) * 100) : 0;
+
+  $('#progressFill').style.width = percent + '%';
+  $('#progressPercent').textContent = percent + '%';
+  $('#progressLabel').textContent =
+    state === 'done' ? 'Sequenza completata' :
+    state === 'stopped' ? 'Sequenza fermata' :
+    state === 'error' ? 'Sequenza con controlli' :
+    safeTotal ? `Elaborazione ${safeDone}/${safeTotal}` : 'Pronto';
+
+  $('#progressDetail').textContent = detail || (safeTotal ? `Completati ${safeDone} di ${safeTotal} brani.` : 'Importa una lista per iniziare.');
+  $('.progress-track').setAttribute('aria-valuenow', String(percent));
+}
+
+let sequenceRunning = false;
+let sequenceStopRequested = false;
+let activeRow = null;
+
+function sleep(ms){
+  return new Promise(resolve => window.setTimeout(resolve, ms));
+}
+
+function setControlsRunning(running){
+  $('#runAllBtn').disabled = running;
+  $('#stopAllBtn').disabled = !running;
+  $$('.autoUpdate, .manualFind', tbody).forEach(btn => btn.disabled = running);
+}
+
+function getTrackRows(){
+  return $$('tr', tbody).filter(row => !row.classList.contains('empty-row'));
+}
+
+async function runWholeList(){
+  const rows = getTrackRows();
+  if(!rows.length){
+    setStatus('Importa prima una lista.', 'warn');
+    return;
+  }
+
+  const invalid = rows.filter(row => !/^\d{4}$/.test(clean($('.year', row).value)));
+  if(invalid.length){
+    setStatus(`Ci sono ${invalid.length} righe con anno non valido. Correggile prima di avviare la sequenza.`, 'warn');
+    updateProgress(0, rows.length, `Bloccata: ${invalid.length} righe con anno non valido.`, 'error');
+    return;
+  }
+
+  sequenceRunning = true;
+  sequenceStopRequested = false;
+  setControlsRunning(true);
+
+  const delay = getDelay();
+  let completed = 0;
+  updateProgress(0, rows.length, `Avvio sequenza: ${rows.length} brani da elaborare.`);
+
+  for(let index = 0; index < rows.length; index++){
+    if(sequenceStopRequested) break;
+
+    const row = rows[index];
+    activeRow = row;
+    row.classList.remove('done', 'skipped');
+    row.classList.add('running');
+
+    const title = searchRow(row);
+    if(!title){
+      row.classList.remove('running');
+      row.classList.add('skipped');
+      const artist = clean($('.artist', row).value);
+      const trackTitle = clean($('.title', row).value);
+      const missingText = !artist && !trackTitle
+        ? 'artista e titolo mancanti'
+        : !artist
+          ? 'artista mancante'
+          : 'titolo mancante';
+      updateProgress(completed, rows.length, `Riga ${index + 1}: ${missingText}, saltata.`, 'error');
+      continue;
+    }
+
+    const year = clean($('.year', row).value);
+    const automixText = $('#addToAutomix').checked ? ' + Automix' : '';
+    const popValue = clean($('.popularity', row).value);
+    const ratingText = $('#setVdjRating').checked && popValue !== ''
+      ? ` + ${popularityToRating(popValue)}★`
+      : '';
+    const keyValue = normalizeKeyValue($('.key', row).value);
+    const keyText = $('#setVdjKey').checked && keyValue ? ` + Camelot ${keyValue}` : '';
+    const genreValue = clean($('.genre', row).value);
+    const genreText = $('#setVdjGenre').checked && genreValue && genreValue !== '-' ? ` + Genere ${genreValue}` : '';
+    const detail = `${index + 1}/${rows.length} · Cerco: ${title} · Year ${year}${ratingText}${keyText}${genreText}${automixText}`;
+    setStatus(`Sequenza ${detail}…`, 'success');
+    updateProgress(completed, rows.length, detail);
+
+    await sleep(delay);
+    if(sequenceStopRequested){
+      row.classList.remove('running');
+      break;
+    }
+
+    const updated = await updateYear(row);
+    if(!updated){
+      row.classList.remove('running');
+      row.classList.add('skipped');
+      updateProgress(completed, rows.length, `Riga ${index + 1}: aggiornamento non eseguito.`, 'error');
+      continue;
+    }
+
+    row.classList.remove('running');
+    row.classList.add('done');
+    completed++;
+
+    updateProgress(
+      completed,
+      rows.length,
+      `${completed}/${rows.length} completati · Ultimo: ${title}${$('#setVdjRating').checked && popValue !== '' ? ' · classificazione aggiornata' : ''}${$('#addToAutomix').checked ? ' · aggiunto ad Automix' : ''}`
+    );
+    await sleep(180);
+  }
+
+  const stopped = sequenceStopRequested;
+  sequenceRunning = false;
+  sequenceStopRequested = false;
+  activeRow = null;
+  setControlsRunning(false);
+
+  const skipped = $$('.skipped', tbody).length;
+  if(stopped){
+    setStatus(`Sequenza fermata. Completati <b>${completed}</b> brani${skipped ? ` · saltati <b>${skipped}</b>` : ''}.`, 'warn');
+    updateProgress(completed, rows.length, `Interrotta dopo ${completed} brani completati${skipped ? ` · ${skipped} saltati` : ''}.`, 'stopped');
+  } else {
+    setStatus(`Sequenza completata: <b>${completed}</b> brani aggiornati${skipped ? ` · <b>${skipped}</b> saltati per artista/titolo mancante` : ''}.`, skipped ? 'warn' : 'success');
+    updateProgress(completed, rows.length, `Completati ${completed} brani${skipped ? ` · ${skipped} saltati` : ''}.`, skipped ? 'error' : 'done');
+  }
+}
+
+document.addEventListener('click', (event) => {
+  if(event.target.matches('.autoUpdate')){
+    autoSearchAndUpdate(event.target.closest('tr'));
+  }
+  if(event.target.matches('.manualFind')){
+    const row = event.target.closest('tr');
+    const query = searchRow(row);
+    if(query){
+      setStatus(`Ricerca inviata: <code>${escapeHtml(query)}</code>.`, 'success');
+    }
+  }
+});
+
+$('#runAllBtn').addEventListener('click', runWholeList);
+$('#stopAllBtn').addEventListener('click', () => {
+  if(sequenceRunning){
+    sequenceStopRequested = true;
+    $('#stopAllBtn').disabled = true;
+    setStatus('Arresto richiesto: completo al massimo il comando in corso e poi mi fermo.', 'warn');
+    $('#progressDetail').textContent = 'Arresto richiesto: attendo la fine del comando in corso.';
+  }
+});
+
+tbody.addEventListener('change', (event) => {
+  const row = event.target.closest('tr');
+  if(!row) return;
+
+  if(event.target.matches('.date') && event.target.value){
+    $('.year', row).value = event.target.value.slice(0,4);
+  }
+  if(event.target.matches('.popularity')){
+    updateRatingDisplay(row);
+  }
+});
+
+$('#parseBtn').addEventListener('click', importList);
+
+$('#sampleBtn').addEventListener('click', () => {
+  $('#source').value = `1
+ELLAS SABEN YA
+2026-06-12
+2
+No Se Dejan Mete Cabra
+2026-06-12
+3
+NO ME IMPORTA
+2026-06-12
+4
+Oh Chet (feat. Travis Scott)
+2026-06-05`;
+  $('#artistsSource').value = `Artista da completare - NO ME IMPORTA
+Artista da completare - Oh Chet
+Ronny GTA - No Se Dejan Mete Cabra
+El Alfa, Donaty, Orlando Moreno Feo - ELLAS SABEN YA`;
+  $('#popularitySource').value = `No Se Dejan Mete Cabra - 72
+ELLAS SABEN YA - 87
+Oh Chet - 65
+NO ME IMPORTA - 59`;
+  $('#keySource').value = `ELLAS SABEN YA - 8A
+No Se Dejan Mete Cabra - 11B
+Oh Chet - F# minor
+NO ME IMPORTA - 4A`;
+  $('#genreSource').value = `ELLAS SABEN YA - dembow
+No Se Dejan Mete Cabra - reggaeton
+Oh Chet - trap
+NO ME IMPORTA - latin urban`;
+  importList();
+});
+
+$('#clearInputBtn').addEventListener('click', () => {
+  $('#source').value = '';
+  $('#artistsSource').value = '';
+  $('#popularitySource').value = '';
+  $('#keySource').value = '';
+  $('#genreSource').value = '';
+  $('#parseInfo').textContent = 'Nessuna lista importata';
+});
+
+$('#clearRowsBtn').addEventListener('click', () => {
+  tbody.innerHTML = '<tr class="empty-row"><td colspan="10" class="empty">Tabella svuotata.</td></tr>';
+  $('#parseInfo').textContent = 'Nessuna lista importata';
+  updateProgress(0, 0, 'Tabella svuotata.');
+  setStatus('Tabella svuotata.');
+});
+
+$('#clearSearchBtn').addEventListener('click', () => {
+  run('clear_search');
+  setStatus('Ricerca di VirtualDJ pulita.', 'success');
+});
+
+let currentSort = { key: null, direction: 'asc' };
+
+function getSortValue(row, key){
+  const field = $('.' + key, row);
+  if(!field) return '';
+  const value = clean(field.value);
+  if(key === 'year' || key === 'popularity' || key === 'rating') return Number.parseInt(value, 10) || 0;
+  if(key === 'date') return value || '0000-00-00';
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+function updateSortHeaders(){
+  $$('.sortable').forEach(th => {
+    const arrow = $('.sort-arrow', th);
+    if(!arrow) return;
+    arrow.textContent = th.dataset.sort === currentSort.key
+      ? (currentSort.direction === 'asc' ? '▲' : '▼')
+      : '';
+  });
+}
+
+function sortTableBy(key){
+  const rows = $$('tr', tbody).filter(row => !row.classList.contains('empty-row'));
+  if(!rows.length) return;
+
+  const direction = currentSort.key === key && currentSort.direction === 'asc' ? 'desc' : 'asc';
+  currentSort = { key, direction };
+
+  rows.sort((a, b) => {
+    const av = getSortValue(a, key);
+    const bv = getSortValue(b, key);
+
+    let result;
+    if(typeof av === 'number' && typeof bv === 'number'){
+      result = av - bv;
+    } else {
+      result = String(av).localeCompare(String(bv), 'it', {
+        numeric: true,
+        sensitivity: 'base'
+      });
+    }
+    return direction === 'asc' ? result : -result;
+  });
+
+  rows.forEach(row => tbody.appendChild(row));
+  renumber();
+  updateSortHeaders();
+
+  const label = {
+    artist: 'Artista',
+    title: 'Titolo',
+    date: 'Data release',
+    year: 'Anno',
+    popularity: 'Popolarità',
+    rating: 'Classificazione VDJ',
+    key: 'Key'
+  }[key] || key;
+
+  setStatus(`Lista ordinata per <b>${label}</b> in ordine ${direction === 'asc' ? 'crescente' : 'decrescente'}.`, 'success');
+}
+
+$$('.sortable').forEach(th => {
+  th.addEventListener('click', () => sortTableBy(th.dataset.sort));
+  th.addEventListener('keydown', event => {
+    if(event.key === 'Enter' || event.key === ' '){
+      event.preventDefault();
+      sortTableBy(th.dataset.sort);
+    }
+  });
+});
+
+function csvEscape(value){
+  const s = String(value ?? '');
+  return /[;"\n]/.test(s) ? '"' + s.replaceAll('"','""') + '"' : s;
+}
+$('#exportBtn').addEventListener('click', () => {
+  const rows = $$('tr', tbody).filter(row => !row.classList.contains('empty-row'));
+  if(!rows.length){
+    setStatus('Non ci sono righe da esportare.', 'warn');
+    return;
+  }
+  const csvRows = [
+    ['N.','Artista','Titolo','Data release','Year','Popolarità','Classificazione VDJ','Key','Genere'],
+    ...rows.map((row, i) => [
+      i + 1,
+      $('.artist', row).value.trim(),
+      $('.title', row).value.trim(),
+      $('.date', row).value.trim(),
+      $('.year', row).value.trim(),
+      $('.popularity', row).value.trim(),
+      $('.rating', row).value.trim(),
+      $('.key', row).value.trim(),
+      $('.genre', row).value.trim()
+    ])
+  ];
+  const csv = csvRows.map(row => row.map(csvEscape).join(';')).join('\r\n');
+  const blob = new Blob(['\ufeff' + csv], {type:'text/csv;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'vdj_year_update_sortspotify.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus('CSV esportato.', 'success');
+});
+
+window.addEventListener('message', event => {
+  if(event.origin !== location.origin || event.data?.type !== 'vdjdesk-library') return;
+  const tracks = Array.isArray(event.data.tracks) ? event.data.tracks : [];
+  resetTable();
+  tracks.forEach((track, index) => {
+    const releaseDate = track.release_date || '2026-01-01';
+    const year = releaseDate.slice(0, 4);
+    addRow({
+      id: track.id || '',
+      artist: track.artist || '',
+      title: track.title || '',
+      filePath: track.file_path || '',
+      searchQuery: buildVdjSearchQuery(track),
+      date: releaseDate,
+      year,
+      popularity: track.popularity ?? '',
+      key: track.camelot || track.musical_key || '',
+      genre: track.spotify_genre || track.genre || ''
+    }, index + 1);
+  });
+  $('#parseInfo').textContent = `${tracks.length} brani da VDJ Desk`;
+  updateProgress(0, tracks.length, `${tracks.length} brani della libreria pronti.`);
+  setStatus(`Caricati <b>${tracks.length}</b> brani direttamente dalla Libreria VDJ Desk.`, 'success');
+});
+</script>
+</body>
+</html>

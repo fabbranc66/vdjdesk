@@ -1,0 +1,74 @@
+{
+  "version": "1.0.0",
+  "name": "KR DJ Desk Library Schema",
+  "primaryMetadataSource": "Spotify",
+  "localLibraryPurpose": "physical_file_presence",
+  "fields": {
+    "artist": { "type": "string", "required": true, "source": "spotify_or_local" },
+    "title": { "type": "string", "required": true, "source": "spotify_or_local" },
+    "spotify_track_id": { "type": "string", "required": false, "source": "spotify" },
+    "spotify_url": { "type": "string", "required": false, "source": "spotify" },
+    "isrc": { "type": "string", "required": false, "source": "spotify" },
+    "release_date": { "type": "string", "required": false, "source": "spotify" },
+    "original_era": { "type": "string", "required": false, "source": "derived" },
+    "spotify_release": { "type": "string", "required": false, "source": "spotify" },
+    "popularity": { "type": "integer", "required": false, "min": 0, "max": 100, "source": "spotify" },
+    "popularity_class": { "type": "string", "required": false, "source": "derived" },
+    "bpm": { "type": "number", "required": false, "source": "spotify_or_vdj" },
+    "bpm_class": { "type": "string", "required": false, "source": "derived" },
+    "key": { "type": "string", "required": false, "source": "spotify_or_vdj" },
+    "mode": { "type": "integer", "required": false, "allowed": [0, 1], "source": "spotify" },
+    "camelot": { "type": "string", "required": false, "pattern": "^(1[0-2]|[1-9])[AB]$", "source": "derived_or_vdj" },
+    "danceability_spotify": { "type": "number", "required": false, "min": 0, "max": 1, "source": "spotify" },
+    "danceability_estimated": { "type": "integer", "required": false, "min": 0, "max": 100, "source": "derived" },
+    "danceability_source": { "type": "string", "required": false, "allowed": ["spotify", "derived", "manual", "missing"] },
+    "danceability_confidence": { "type": "string", "required": false, "allowed": ["high", "medium", "low"] },
+    "energy_spotify": { "type": "number", "required": false, "min": 0, "max": 1, "source": "spotify" },
+    "energy_estimated": { "type": "integer", "required": false, "min": 0, "max": 100, "source": "derived" },
+    "energy_source": { "type": "string", "required": false, "allowed": ["spotify", "derived", "manual", "missing"] },
+    "energy_confidence": { "type": "string", "required": false, "allowed": ["high", "medium", "low"] },
+    "valence_spotify": { "type": "number", "required": false, "min": 0, "max": 1, "source": "spotify" },
+    "valence_estimated": { "type": "integer", "required": false, "min": 0, "max": 100, "source": "derived" },
+    "valence_source": { "type": "string", "required": false, "allowed": ["spotify", "derived", "manual", "missing"] },
+    "valence_confidence": { "type": "string", "required": false, "allowed": ["high", "medium", "low"] },
+    "spotify_genres": { "type": "array", "required": false, "items": "string", "source": "spotify" },
+    "macro_area": {
+      "type": "string",
+      "required": true,
+      "allowed": ["Latin", "Urban", "Commerciale", "Rock / Pop Rock", "Italiana", "Karaoke", "Tematiche / Eventi", "Da classificare"],
+      "source": "mapped"
+    },
+    "main_genre": {
+      "type": "string",
+      "required": true,
+      "allowed": ["Reggaeton", "Dembow", "Bachata", "Salsa", "Merengue", "Cubaton", "Timba", "Latin Pop", "Latin Urban", "Hip Hop", "R&B", "Urban Pop", "Rap Italiano", "Pop", "Dance Pop", "EDM Commerciale", "House", "Rock / Alternative", "Pop Rock", "Ballad", "Acoustic", "Karaoke", "Da classificare"],
+      "source": "mapped"
+    },
+    "subgenre": { "type": "string", "required": false, "source": "mapped_or_manual" },
+    "era": { "type": "string", "required": false, "source": "derived" },
+    "dj_energy": {
+      "type": "string",
+      "required": false,
+      "allowed": ["Warmup", "Groove", "Club", "Peak", "Sing Along", "Break", "Outro / Chiusura", "Karaoke", "Trash / Fun", "Da valutare"],
+      "source": "derived_or_manual"
+    },
+    "mood": { "type": "string", "required": false, "source": "derived_or_manual" },
+    "dj_function": {
+      "type": "string",
+      "required": false,
+      "allowed": ["Warmup", "Ballabile", "Peak Time", "Sing Along", "Karaoke", "Richiesta pubblico", "Cambio genere", "Ponte tra generi", "Pausa / Break", "Finale serata", "Quiz Music", "Tema evento", "Da valutare"],
+      "source": "derived_or_manual"
+    },
+    "danceability_class": {
+      "type": "string",
+      "required": false,
+      "allowed": ["Poco ballabile", "Medio/basso", "Ballabile", "Molto ballabile", "Pista sicura"],
+      "source": "derived"
+    },
+    "tags": { "type": "array", "required": false, "items": "string", "source": "manual_or_auto" },
+    "path": { "type": "string", "required": false, "source": "local" },
+    "found": { "type": "boolean", "required": true, "source": "local" },
+    "match_confidence": { "type": "string", "required": true, "allowed": ["high", "medium", "low"], "source": "derived" },
+    "notes": { "type": "string", "required": false, "source": "manual_or_system" }
+  }
+}

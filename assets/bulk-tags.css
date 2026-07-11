@@ -1,0 +1,4 @@
+.tag-picker button.tag-add{background:#20372a;border-color:#3d6d51;color:var(--green);box-shadow:inset 0 0 0 1px rgba(114,245,165,.18)}
+.tag-picker button.tag-remove{background:#35151b;border-color:#70313a;color:#ff8794;box-shadow:inset 0 0 0 1px rgba(255,88,105,.18)}
+.bulk-add-label{color:var(--green)}
+.bulk-remove-label{color:#ff8794}
