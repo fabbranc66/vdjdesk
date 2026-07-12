@@ -42,7 +42,7 @@
     <header class="topbar">
       <button id="menu-toggle" class="icon-button">☰</button>
       <div><p id="eyebrow">SERATA ATTIVA</p><h1 id="view-title">Live desk</h1></div>
-      <div class="top-actions"><span class="clock" id="clock">00:00</span><a class="button ghost" href="request.php" target="_blank">Pagina QR ↗</a></div>
+      <div class="top-actions"><span class="clock" id="clock">00:00</span><a class="button ghost" href="https://www.kr-solutions.it/vdjdesk/request.php" target="_blank">Pagina QR ↗</a></div>
     </header>
 
     <section class="view active" id="view-dashboard">

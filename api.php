@@ -29,11 +29,12 @@ try {
     $data = requestData();
 
     if ($action === 'bootstrap') {
+        $remoteBootstrap = appUsesLocalFiles() ? remoteApiFetch('bootstrap') : null;
         $live = $virtualDjHistory->snapshot();
         try { $live['current'] = $virtualDjControl->currentTrack() ?? $live['current']; } catch (Throwable) {}
         $settings = $pdo->query('SELECT `key`,value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $suggestionStart = !empty($settings['suggestion_start_track_id']) ? $library->find((int) $settings['suggestion_start_track_id']) : null;
-        $requestCounts = $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $requestCounts = is_array($remoteBootstrap) ? (array) ($remoteBootstrap['request_counts'] ?? []) : $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
         $driveEExpression = appUsesLocalFiles() ? "SUM(file_exists=1 AND UPPER(file_path) LIKE 'E:%')" : "SUM(UPPER(file_path) LIKE 'E:%')";
         $trackStats = $pdo->query("
             SELECT
@@ -62,7 +63,7 @@ try {
                 'track_missing'=>(int) ($trackStats['missing'] ?? 0),
                 'tracks_e'=>(int) ($trackStats['drive_e'] ?? 0),
                 'duplicates'=>$library->duplicateGroupCount(),
-                'requests'=>(int) $pdo->query("SELECT COUNT(*) FROM requests WHERE status='new'")->fetchColumn(),
+                'requests'=>is_array($remoteBootstrap) ? (int) ($remoteBootstrap['stats']['requests'] ?? 0) : (int) $pdo->query("SELECT COUNT(*) FROM requests WHERE status='new'")->fetchColumn(),
                 'played_today'=>$live['total'],
             ],
             'tags' => ['APERTURA','APERITIVO','CENA','WARMUP','URLANTE','CHIUSURA','DONNE','UOMINI','KARAOKE','BALLI DI GRUPPO','COMMERCIALE','RAP IT','CAMBIO GENERE SICURO'],
@@ -134,6 +135,15 @@ try {
             (string) ($_GET['tag'] ?? '')
         )]);
     }
+    if (appUsesLocalFiles() && shouldProxyToHosting($action)) {
+        if ($action === 'request-update' && $method === 'POST' && (string)($data['status'] ?? '') === 'queued') {
+            $trackId=(int)($data['track_id']??0);
+            if($trackId<1)jsonResponse(['error'=>'Per inviare ad Automix serve un brano collegato alla libreria.'],422);
+            $virtualDjControl->addTrackToAutomix($trackId);
+            usleep(350000);
+        }
+        remoteApiPassthrough($action, $method, $data);
+    }
     if ($action === 'requests' && $method === 'GET') {
         $query = trim((string) ($_GET['q'] ?? ''));
         $requestEstimate->recalculate();
@@ -175,7 +185,7 @@ try {
         $allowed = ['new','approved','rejected','next','queued','played'];
         $status = (string) ($data['status'] ?? 'new');
         if (!in_array($status, $allowed, true)) jsonResponse(['error'=>'Stato non valido'], 422);
-        if ($status === 'queued') {
+        if ($status === 'queued' && appUsesLocalFiles()) {
             $trackId=(int)($data['track_id']??0);
             if($trackId<1)jsonResponse(['error'=>'Per inviare ad Automix serve un brano collegato alla libreria.'],422);
             $virtualDjControl->addTrackToAutomix($trackId);
@@ -210,7 +220,8 @@ try {
     }
     if ($action === 'quiz-prefill') {$value=setting('quiz_prefill','');$payload=json_decode((string)$value,true);jsonResponse(['prefill'=>is_array($payload)?$payload:null]);}
     if ($action === 'network-info') {
-        $ip=localNetworkIp();$base='http://'.$ip.'/vdjdesk/';
+        $ip=localNetworkIp();
+        $base=appUsesLocalFiles()?'http://'.$ip.'/vdjdesk/':rtrim((string) setting('hosting_base_url', 'https://www.kr-solutions.it/vdjdesk'), '/').'/';
         jsonResponse(['ip'=>$ip,'public_url'=>$base.'request.php','screen_url'=>$base.'quiz-screen.php']);
     }
     if ($action === 'track-update' && $method === 'POST') {
@@ -393,3 +404,107 @@ try {
 }
 
 function boundScore(mixed $value): int { return min(5,max(1,(int)$value)); }
+
+function hostingApiUrl(string $action): string
+{
+    $base = rtrim((string) setting('hosting_base_url', 'https://www.kr-solutions.it/vdjdesk'), '/');
+    $params = $_GET;
+    $params['action'] = $action;
+    return $base . '/api.php?' . http_build_query($params);
+}
+
+function shouldProxyToHosting(string $action): bool
+{
+    return in_array($action, [
+        'requests',
+        'request-create',
+        'request-status',
+        'request-estimates-refresh',
+        'request-automix-debug',
+        'request-update',
+        'request-delete',
+        'quiz-state',
+        'quiz-history',
+        'quiz-create',
+        'quiz-launch',
+        'quiz-close',
+        'quiz-reveal',
+        'quiz-join',
+        'quiz-answer',
+        'quiz-heartbeat',
+        'quiz-leave',
+        'quiz-participant-action',
+        'quiz-prefill',
+        'network-info',
+    ], true);
+}
+
+function remoteApiFetch(string $action, string $method = 'GET', array $data = []): ?array
+{
+    try {
+        $response = remoteApiRequest($action, $method, $data);
+        return is_array($response['json'] ?? null) ? $response['json'] : null;
+    } catch (Throwable) {
+        return null;
+    }
+}
+
+function remoteApiPassthrough(string $action, string $method, array $data): never
+{
+    try {
+        $response = remoteApiRequest($action, $method, $data);
+        http_response_code((int) $response['status']);
+        header('Content-Type: application/json; charset=utf-8');
+        echo $response['body'];
+        exit;
+    } catch (Throwable $error) {
+        jsonResponse(['error'=>'Hosting non raggiungibile: '.$error->getMessage()], 502);
+    }
+}
+
+function remoteApiRequest(string $action, string $method = 'GET', array $data = []): array
+{
+    $url = hostingApiUrl($action);
+    $method = strtoupper($method);
+    $headers = ['Accept: application/json'];
+    $body = null;
+    if ($method !== 'GET') {
+        $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        $headers[] = 'Content-Type: application/json';
+    }
+    if (function_exists('curl_init')) {
+        $curl = curl_init($url);
+        curl_setopt_array($curl, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CUSTOMREQUEST => $method,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+        if ($body !== null) curl_setopt($curl, CURLOPT_POSTFIELDS, $body);
+        $raw = curl_exec($curl);
+        $status = (int) curl_getinfo($curl, CURLINFO_RESPONSE_CODE);
+        $error = curl_error($curl);
+        curl_close($curl);
+        if ($raw === false || $raw === '') throw new RuntimeException($error ?: 'risposta vuota');
+    } else {
+        $context = stream_context_create([
+            'http' => [
+                'method' => $method,
+                'header' => implode("\r\n", $headers),
+                'content' => $body ?? '',
+                'timeout' => 12,
+                'ignore_errors' => true,
+            ],
+        ]);
+        $raw = file_get_contents($url, false, $context);
+        $status = 200;
+        if (isset($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $match)) $status = (int) $match[1];
+        if ($raw === false || $raw === '') throw new RuntimeException('risposta vuota');
+    }
+    $json = json_decode((string) $raw, true);
+    if (!is_array($json)) throw new RuntimeException('risposta hosting non JSON');
+    return ['status'=>$status ?: 200, 'body'=>(string) $raw, 'json'=>$json];
+}

@@ -12,7 +12,7 @@ use Endroid\QrCode\Writer\SvgWriter;
 
 $target=(string)($_GET['target']??'public');
 $page=$target==='screen'?'quiz-screen.php':'request.php';
-$url='http://'.localNetworkIp().'/vdjdesk/'.$page;
+$url=rtrim((string) setting('hosting_base_url', 'https://www.kr-solutions.it/vdjdesk'), '/').'/'.$page;
 $builder=new Builder(writer:new SvgWriter(),writerOptions:[SvgWriter::WRITER_OPTION_EXCLUDE_XML_DECLARATION=>true],validateResult:false,data:$url,encoding:new Encoding('UTF-8'),errorCorrectionLevel:ErrorCorrectionLevel::Medium,size:320,margin:12,roundBlockSizeMode:RoundBlockSizeMode::Margin);
 $result=$builder->build();
 header('Content-Type: image/svg+xml; charset=utf-8');
