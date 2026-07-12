@@ -25,7 +25,7 @@ final class EDuplicateService
             $normalized = $this->createNormalizedGroups($scanId);
             $finish = $this->pdo->prepare("UPDATE e_duplicate_scans SET status='completed',completed_at=CURRENT_TIMESTAMP,files_scanned=?,exact_groups=?,normalized_groups=? WHERE id=?");
             $finish->execute([$count,$exact,$normalized,$scanId]);
-            $this->pdo->exec('DELETE FROM e_duplicate_scans WHERE id NOT IN (SELECT id FROM (SELECT id FROM e_duplicate_scans ORDER BY id DESC LIMIT 5) recent_scans)');
+            $this->pdo->exec('DELETE FROM e_duplicate_scans WHERE id NOT IN (SELECT id FROM (SELECT id FROM e_duplicate_scans ORDER BY id DESC LIMIT 1) recent_scans)');
             return $this->summary($scanId);
         } catch (Throwable $error) {
             $statement = $this->pdo->prepare("UPDATE e_duplicate_scans SET status='error',message=?,completed_at=CURRENT_TIMESTAMP WHERE id=?");
