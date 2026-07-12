@@ -35,6 +35,13 @@ function appConfig(): array
     return $config;
 }
 
+function appUsesLocalFiles(): bool
+{
+    $database = appConfig()['database'] ?? [];
+    $host = strtolower((string) ($database['host'] ?? '127.0.0.1'));
+    return in_array($host, ['127.0.0.1', 'localhost', '::1'], true);
+}
+
 function db(): PDO
 {
     static $pdo;

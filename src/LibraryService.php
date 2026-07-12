@@ -34,7 +34,10 @@ final class LibraryService
 
     private function searchConditions(array $filters): array
     {
-        $where = ["file_exists = 1", "UPPER(file_path) LIKE 'E:%'"];
+        $where = ["UPPER(file_path) LIKE 'E:%'"];
+        if (appUsesLocalFiles()) {
+            array_unshift($where, "file_exists = 1");
+        }
         $params = [];
         $query = trim((string) ($filters['q'] ?? ''));
         if ($query !== '') {
@@ -165,15 +168,17 @@ final class LibraryService
 
     public function duplicateGroupCount(): int
     {
-        return (int) $this->pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1) duplicate_groups")->fetchColumn();
+        $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1) duplicate_groups")->fetchColumn();
     }
 
     public function duplicates(int $limit = 200): array
     {
         $limit = min(1000, max(1, $limit));
-        $groups = $this->pdo->query("SELECT normalized_artist, normalized_title, COUNT(*) total FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1 ORDER BY total DESC LIMIT $limit")->fetchAll();
+        $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
+        $groups = $this->pdo->query("SELECT normalized_artist, normalized_title, COUNT(*) total FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1 ORDER BY total DESC LIMIT $limit")->fetchAll();
         $result = [];
-        $fetch = $this->pdo->prepare("SELECT * FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND normalized_artist = ? AND normalized_title = ? ORDER BY bitrate DESC, rating DESC, play_count DESC");
+        $fetch = $this->pdo->prepare("SELECT * FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_artist = ? AND normalized_title = ? ORDER BY bitrate DESC, rating DESC, play_count DESC");
         foreach ($groups as $group) {
             $fetch->execute([$group['normalized_artist'], $group['normalized_title']]);
             $tracks = array_map([$this, 'hydrate'], $fetch->fetchAll());
@@ -355,13 +360,13 @@ final class LibraryService
 
     public function comparisonFolderOptions(): array
     {
-        $this->refreshTrackedFileExistence();
+        if (appUsesLocalFiles()) $this->refreshTrackedFileExistence();
         $root = canonicalPath('E:\\LIBRERIA_DEFINITIVA');
         $roots = [['path'=>$root,'label'=>'Tutta Libreria Definitiva','root'=>$root,'depth'=>0]];
         $folders = $this->pdo->query(<<<'SQL'
             SELECT folder, COUNT(DISTINCT file_path) AS track_count
             FROM tracks
-            WHERE file_exists = 1 AND UPPER(file_path) LIKE 'E:%'
+            WHERE UPPER(file_path) LIKE 'E:%'
             GROUP BY folder
             ORDER BY folder
         SQL)->fetchAll();
@@ -381,7 +386,7 @@ final class LibraryService
             $childCounts = [];
             foreach ($folders as $folder) {
                 $folderPath = rtrim((string) $folder['folder'], '\\');
-                if (!str_starts_with(strtolower($folderPath), $prefix) || !is_dir($folderPath)) continue;
+                if (!str_starts_with(strtolower($folderPath), $prefix) || (appUsesLocalFiles() && !is_dir($folderPath))) continue;
                 $relative = substr($folderPath, strlen($rootPath) + 1);
                 $parts = array_values(array_filter(explode('\\', $relative), fn(string $part) => $part !== ''));
                 $current = $rootPath;
@@ -411,20 +416,20 @@ final class LibraryService
 
     public function definitiveLibraryFolderOptions(): array
     {
-        $this->refreshTrackedFileExistence();
+        if (appUsesLocalFiles()) $this->refreshTrackedFileExistence();
         $root = canonicalPath('E:\\LIBRERIA_DEFINITIVA');
         $prefix = strtolower($root . '\\');
         $folders = $this->pdo->query(<<<'SQL'
             SELECT folder, COUNT(DISTINCT file_path) AS track_count
             FROM tracks
-            WHERE file_exists = 1 AND UPPER(file_path) LIKE 'E:%'
+            WHERE UPPER(file_path) LIKE 'E:%'
             GROUP BY folder
             ORDER BY folder
         SQL)->fetchAll();
         $counts = [$root => 0];
         foreach ($folders as $folder) {
             $folderPath = rtrim(canonicalPath((string) $folder['folder']), '\\');
-            if (!str_starts_with(strtolower($folderPath), $prefix) || !is_dir($folderPath)) continue;
+            if (!str_starts_with(strtolower($folderPath), $prefix) || (appUsesLocalFiles() && !is_dir($folderPath))) continue;
             if (preg_match('/\\\\PLAYLIST(\\\\|$)/i', $folderPath)) continue;
             $count = (int) $folder['track_count'];
             $counts[$root] += $count;
@@ -438,7 +443,7 @@ final class LibraryService
         }
         $items = [];
         foreach ($counts as $path => $count) {
-            if ($count < 1 || !is_dir($path)) continue;
+            if ($count < 1 || (appUsesLocalFiles() && !is_dir($path))) continue;
             $relative = $path === $root ? 'Tutta Libreria Definitiva' : substr($path, strlen($root) + 1);
             $depth = $path === $root ? 0 : substr_count($relative, '\\') + 1;
             $name = $path === $root ? 'Tutta Libreria Definitiva' : basename($path);

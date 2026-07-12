@@ -34,12 +34,13 @@ try {
         $settings = $pdo->query('SELECT `key`,value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $suggestionStart = !empty($settings['suggestion_start_track_id']) ? $library->find((int) $settings['suggestion_start_track_id']) : null;
         $requestCounts = $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
+        $driveEExpression = appUsesLocalFiles() ? "SUM(file_exists=1 AND UPPER(file_path) LIKE 'E:%')" : "SUM(UPPER(file_path) LIKE 'E:%')";
         $trackStats = $pdo->query("
             SELECT
                 COUNT(*) total,
                 SUM(file_exists=1) present,
                 SUM(file_exists=0) missing,
-                SUM(file_exists=1 AND UPPER(file_path) LIKE 'E:%') drive_e
+                $driveEExpression drive_e
             FROM tracks
             WHERE UPPER(file_path) LIKE 'E:%'
         ")->fetch();
@@ -81,7 +82,7 @@ try {
         $extension = "LOWER(SUBSTRING_INDEX(file_name,'.',-1))";
         $audio = "$extension IN ('mp3','m4a','aac','ogg','opus','wma','flac','wav','aiff','aif','alac')";
         $standard = "(($extension='mp3' AND COALESCE(bitrate,0)>=320) OR $extension IN ('flac','wav','aiff','aif','alac'))";
-        $base = "file_exists=1 AND UPPER(file_path) LIKE 'E:%'";
+        $base = (appUsesLocalFiles() ? "file_exists=1 AND " : "") . "UPPER(file_path) LIKE 'E:%'";
         $counts = [
             'below_standard' => "($base AND $audio AND NOT $standard)",
             'no_spotify_id' => "($base AND COALESCE(spotify_id,'')='')",
@@ -327,7 +328,8 @@ try {
         jsonResponse(['ok'=>true]);
     }
     if ($action === 'vdj-genre-stats') {
-        $items=$pdo->query("SELECT MIN(TRIM(genre)) genre,COUNT(*) total FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND TRIM(COALESCE(genre,''))<>'' GROUP BY LOWER(TRIM(genre)) ORDER BY total DESC,genre")->fetchAll();
+        $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
+        $items=$pdo->query("SELECT MIN(TRIM(genre)) genre,COUNT(*) total FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND TRIM(COALESCE(genre,''))<>'' GROUP BY LOWER(TRIM(genre)) ORDER BY total DESC,genre")->fetchAll();
         jsonResponse(['items'=>$items,'total_genres'=>count($items),'total_tracks'=>array_sum(array_map(fn(array $item)=>(int)$item['total'],$items))]);
     }
     if ($action === 'library-standard-validate') jsonResponse((new LibraryStandardService())->validate());
