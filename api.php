@@ -337,7 +337,7 @@ try {
         jsonResponse(['ok'=>true]);
     }
     if ($action === 'settings' && $method === 'POST') {
-        $allowed = ['music_root','vdj_database','playlist_folder','definitive_playlist_folder','duplicate_threshold','recent_exclusion','bpm_range','key_mode','vdj_network_port','kr_formula_weights','request_interval_minutes','discogs_consumer_key','discogs_consumer_secret','discogs_request_token_url','discogs_authorize_url','discogs_access_token_url'];
+        $allowed = ['music_root','vdj_database','playlist_folder','definitive_playlist_folder','duplicate_threshold','recent_exclusion','bpm_range','key_mode','vdj_network_port','kr_formula_weights','request_interval_minutes','discogs_consumer_key','discogs_consumer_secret','discogs_request_token_url','discogs_authorize_url','discogs_access_token_url','beatport_api_base_url','beatport_track_endpoint','beatport_bulk_endpoint'];
         $statement = $pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
         foreach ($allowed as $key) if (array_key_exists($key,$data)) $statement->execute([$key,(string)$data[$key]]);
         jsonResponse(['ok'=>true]);

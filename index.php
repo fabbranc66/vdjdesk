@@ -208,6 +208,12 @@
           <label>URL token accesso<input name="discogs_access_token_url"></label>
           <p class="form-note">Per ora sono solo salvate in KR Desk; le colleghiamo dopo alla ricerca metadati Discogs.</p>
         </article>
+        <article class="panel form-panel"><span class="kicker">BEATPORT</span><h2>Migrator API</h2>
+          <label>Base URL<input name="beatport_api_base_url" autocomplete="off"></label>
+          <label>Endpoint singolo<input name="beatport_track_endpoint" autocomplete="off"></label>
+          <label>Endpoint bulk<input name="beatport_bulk_endpoint" autocomplete="off"></label>
+          <p class="form-note">Questi endpoint non richiedono autenticazione. Serve solo il Beatport track ID.</p>
+        </article>
         <article class="panel form-panel formula-panel" id="formula-settings"><span class="kicker">PUNTEGGI KR</span><h2>Formule modificabili</h2><p class="form-note">Coefficienti applicati a metriche 0–100. Le penalità sono punti.</p><input type="hidden" name="kr_formula_weights" id="kr-formula-weights">
           <table class="formula-table"><thead><tr><th>Punteggio</th><th>Formula / pesi</th></tr></thead><tbody>
             <tr><td><b>Energia</b></td><td><div class="formula-inputs"><label>Energia Spotify <input type="number" step="0.01" data-formula-group="energy" data-formula-key="spotify_energy"></label><label>Volume <input type="number" step="0.01" data-formula-group="energy" data-formula-key="loudness"></label><label>Ballabilità <input type="number" step="0.01" data-formula-group="energy" data-formula-key="dance"></label><label>Tempo <input type="number" step="0.01" data-formula-group="energy" data-formula-key="tempo"></label></div></td></tr>
