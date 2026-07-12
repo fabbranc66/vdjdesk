@@ -247,6 +247,7 @@ final class LibraryService
             $sourceFilePath = (string) $song['FilePath'];
             if ($sourceFilePath === '') continue;
             $filePath = $this->resolvePathForDatabase($sourceFilePath, $databasePath);
+            if (!str_starts_with(strtoupper($filePath), 'E:')) continue;
             $tags = $song->Tags;
             $infos = $song->Infos;
             $fileName = basename(str_replace('\\', '/', $filePath));
@@ -321,7 +322,8 @@ final class LibraryService
             $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id)");
             $changed = count(array_filter($results, fn($item) => $item['status'] === 'synced'));
             $removed = $changed > 0 ? $this->removeMissingLocalTracks() : 0;
-            return ['databases'=>$results,'changed'=>$changed,'removed'=>$removed,'total'=>count($results)];
+            $pruned = $this->pruneToDefinitiveLibrary();
+            return ['databases'=>$results,'changed'=>$changed,'removed'=>$removed,'pruned'=>$pruned,'total'=>count($results)];
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -334,9 +336,27 @@ final class LibraryService
         $sync=$this->syncAllVirtualDjDatabases(true);
         $orphans=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks t WHERE t.source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=t.id)")->fetchColumn();
         $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=tracks.id)");
+        $pruned=$this->pruneToDefinitiveLibrary();
         $after=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
         $linked=(int)$this->pdo->query('SELECT COUNT(DISTINCT track_id) FROM track_sources')->fetchColumn();
-        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>$orphans,'linked'=>$linked,'sync'=>$sync];
+        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>$orphans,'pruned'=>$pruned,'linked'=>$linked,'sync'=>$sync];
+    }
+
+    public function pruneToDefinitiveLibrary(): array
+    {
+        $before=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
+        $nonE=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks WHERE UPPER(file_path) NOT LIKE 'E:%'")->fetchColumn();
+        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->exec("DELETE FROM tracks WHERE UPPER(file_path) NOT LIKE 'E:%'");
+            $this->pdo->exec("DELETE FROM library_databases WHERE label LIKE 'Database drive %' AND drive_letter <> 'E'");
+            $this->pdo->commit();
+        } catch (Throwable $error) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $error;
+        }
+        $after=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
+        return ['before'=>$before,'after'=>$after,'removed_non_e'=>$nonE];
     }
 
     public function virtualDjDatabaseStatus(): array
@@ -570,11 +590,8 @@ final class LibraryService
         if ($configured && is_file($configured)) {
             $paths[strtolower($configured)] = ['path'=>$configured,'label'=>'Principale AppData','drive_letter'=>strtoupper(substr($configured,0,1))];
         }
-        foreach (range('C', 'Z') as $letter) {
-            if (in_array($letter, $this->ignoredVirtualDjDrives(), true)) continue;
-            $path = $letter . ':\\VirtualDJ\\database.xml';
-            if (is_file($path)) $paths[strtolower($path)] = ['path'=>$path,'label'=>'Database drive ' . $letter . ':','drive_letter'=>$letter];
-        }
+        $path = 'E:\\VirtualDJ\\database.xml';
+        if (is_file($path)) $paths[strtolower($path)] = ['path'=>$path,'label'=>'Database drive E:','drive_letter'=>'E'];
         return array_values($paths);
     }
 

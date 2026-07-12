@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080b10"><title>KR DJ Desk</title>
-  <link rel="stylesheet" href="assets/app.css?v=21">
+  <link rel="stylesheet" href="assets/app.css?v=22">
   <link rel="stylesheet" href="assets/automix-suggestions.css?v=6">
   <link rel="stylesheet" href="assets/spotify-features.css?v=20">
   <link rel="stylesheet" href="assets/bulk-tags.css?v=1">
@@ -221,7 +221,7 @@
 <dialog id="bulk-tag-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="bulk-tag-editor"><span class="kicker">LISTA FILTRATA VISIBILE</span><h2>Tag globale</h2><p id="bulk-tag-count">0 brani selezionati</p><p class="form-note">Primo clic: <b class="bulk-add-label">verde, aggiungi</b> · secondo clic: <b class="bulk-remove-label">rosso, rimuovi</b> · terzo clic: annulla.</p><div id="bulk-tag-picker" class="tag-picker"></div><button type="button" class="button primary" id="apply-bulk-tags">Applica ai brani visibili</button></div></dialog>
 <dialog id="playlist-builder-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="playlist-builder"><span class="kicker">COMPLETA PLAYLIST</span><h2>Aggiungi brani dalla libreria</h2><div class="playlist-builder-grid"><label>Numero brani<input id="builder-limit" type="number" min="1" max="100" value="10"></label><label>Genere<input id="builder-genre" placeholder="es. Reggaeton"></label><label>Tag<select id="builder-tag"><option value="">Qualsiasi tag</option></select></label><label>BPM minimo<input id="builder-bpm-min" type="number"></label><label>BPM massimo<input id="builder-bpm-max" type="number"></label><label>Camelot compatibile<input id="builder-camelot" placeholder="es. 8A"></label><label>Energia minima<select id="builder-energy"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Ballabilità minima<select id="builder-dance"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Popolarità minima<input id="builder-popularity" type="number" min="0" max="100"></label><label>Anno da<input id="builder-year-min" type="number"></label><label>Anno a<input id="builder-year-max" type="number"></label><label>Inserisci<select id="builder-position"><option value="end">In fondo</option></select></label></div><label class="builder-quality"><input id="builder-mp3-320" type="checkbox" checked> Solo MP3 320 kbps o superiore</label><div class="button-row"><button type="button" class="button accent" id="builder-search">Trova candidati</button><button type="button" class="button primary" id="builder-add" disabled>Aggiungi selezionati</button></div><div id="builder-results" class="builder-results"><div class="empty-state">Imposta i criteri e cerca.</div></div></div></dialog>
 <div id="app-toast" class="toast"></div>
-  <script src="assets/app.js?v=24"></script>
+  <script src="assets/app.js?v=25"></script>
   <script src="assets/library-quality.js?v=3"></script>
   <script src="assets/spotify-export-filter.js?v=7"></script>
   <script src="assets/library-sort.js?v=2"></script>

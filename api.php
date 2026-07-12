@@ -49,6 +49,10 @@ try {
             'recent' => $live['recent'],
             'session_started_at' => $live['started_at'],
             'history_source' => $live['source_file'],
+            'environment' => [
+                'local_files' => appUsesLocalFiles(),
+                'mode' => appUsesLocalFiles() ? 'local' : 'hosting',
+            ],
             'suggestion_start' => $suggestionStart,
             'settings' => $settings,
             'request_counts' => $requestCounts,
@@ -337,6 +341,7 @@ try {
     if ($action === 'import-vdj' && $method === 'POST') jsonResponse($library->importVirtualDj((string)($data['path']??setting('vdj_database',''))));
     if ($action === 'sync-all' && $method === 'POST') jsonResponse($library->syncAllVirtualDjDatabases((bool)($data['force']??false)));
     if ($action === 'reconcile-vdj' && $method === 'POST') jsonResponse($library->reconcileVirtualDjDatabases());
+    if ($action === 'prune-library' && $method === 'POST') jsonResponse(['ok'=>true] + $library->pruneToDefinitiveLibrary());
     if ($action === 'e-duplicates-scan' && $method === 'POST') jsonResponse((new EDuplicateService($pdo))->scan());
     if ($action === 'e-duplicates-decision' && $method === 'POST') {
         (new EDuplicateService($pdo))->decide((int)($data['id']??0),(string)($data['decision']??''));
