@@ -200,6 +200,14 @@
           <label>Intervallo richieste pubblico (minuti)<input name="request_interval_minutes" type="number" min="0" max="120" value="5"></label>
           <button class="button primary" type="submit">Salva impostazioni</button>
         </article>
+        <article class="panel form-panel"><span class="kicker">DISCOGS</span><h2>Chiavi API</h2>
+          <label>Chiave utente<input name="discogs_consumer_key" autocomplete="off"></label>
+          <label>Segreto utente<input name="discogs_consumer_secret" type="password" autocomplete="off"></label>
+          <label>URL token richiesta<input name="discogs_request_token_url"></label>
+          <label>URL autorizzazione<input name="discogs_authorize_url"></label>
+          <label>URL token accesso<input name="discogs_access_token_url"></label>
+          <p class="form-note">Per ora sono solo salvate in KR Desk; le colleghiamo dopo alla ricerca metadati Discogs.</p>
+        </article>
         <article class="panel form-panel formula-panel" id="formula-settings"><span class="kicker">PUNTEGGI KR</span><h2>Formule modificabili</h2><p class="form-note">Coefficienti applicati a metriche 0–100. Le penalità sono punti.</p><input type="hidden" name="kr_formula_weights" id="kr-formula-weights">
           <table class="formula-table"><thead><tr><th>Punteggio</th><th>Formula / pesi</th></tr></thead><tbody>
             <tr><td><b>Energia</b></td><td><div class="formula-inputs"><label>Energia Spotify <input type="number" step="0.01" data-formula-group="energy" data-formula-key="spotify_energy"></label><label>Volume <input type="number" step="0.01" data-formula-group="energy" data-formula-key="loudness"></label><label>Ballabilità <input type="number" step="0.01" data-formula-group="energy" data-formula-key="dance"></label><label>Tempo <input type="number" step="0.01" data-formula-group="energy" data-formula-key="tempo"></label></div></td></tr>
