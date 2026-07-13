@@ -282,6 +282,7 @@ function seed(PDO $pdo): void
         'vdj_database' => 'D:\\VirtualDJ\\database.xml',
         'playlist_folder' => 'E:\\VirtualDJ\\MyLists',
         'definitive_playlist_folder' => 'E:\\LIBRERIA_DEFINITIVA\\PLAYLIST',
+        'spotmate_download_folder' => 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Da_classificare',
         'duplicate_threshold' => '88',
         'recent_exclusion' => '20',
         'bpm_range' => '8',

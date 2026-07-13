@@ -208,14 +208,12 @@ final class EComparisonService
 
     private function mediaFamily(string $extension): string
     {
-        return in_array(strtolower($extension), ['mp4','mkv','vob'], true) ? 'video' : 'audio';
+        return 'media';
     }
 
     private function purgeCrossFamilyCandidates(): void
     {
-        $sourceFamily = "CASE WHEN LOWER(SUBSTRING_INDEX(source_path,'.',-1)) IN ('mp4','mkv','vob') THEN 'video' ELSE 'audio' END";
-        $targetFamily = "CASE WHEN LOWER(SUBSTRING_INDEX(e_file_path,'.',-1)) IN ('mp4','mkv','vob') THEN 'video' ELSE 'audio' END";
-        $this->pdo->exec("DELETE FROM deletion_candidates WHERE $sourceFamily <> $targetFamily");
+        return;
     }
 
     public function candidates(string $folder = '', string $status = ''): array

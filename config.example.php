@@ -11,4 +11,9 @@ return [
         'charset' => 'utf8mb4',
         'create_database' => false,
     ],
+    'session_tracks_upload' => [
+        'endpoint' => 'https://www.kr-solutions.it/vdjdesk/api.php?action=session-tracks-receive',
+        'token' => 'TOKEN_LUNGO_CONDIVISO_TRA_LOCALE_E_HOSTING',
+        'timeout' => 45,
+    ],
 ];

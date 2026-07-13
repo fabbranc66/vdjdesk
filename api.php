@@ -16,6 +16,10 @@ require __DIR__ . '/src/QuizService.php';
 require __DIR__ . '/src/CodexQuizSuggestionService.php';
 require __DIR__ . '/src/LibraryStandardService.php';
 require __DIR__ . '/src/RequestEstimateService.php';
+require __DIR__ . '/src/SessionTrackService.php';
+require __DIR__ . '/src/InboxService.php';
+require __DIR__ . '/src/SessionTrackUploadService.php';
+require __DIR__ . '/src/SpotifyDuplicateService.php';
 
 try {
     $pdo = db();
@@ -27,8 +31,39 @@ try {
     $action = (string) ($_GET['action'] ?? 'bootstrap');
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
     $data = requestData();
+    enforceApiArea($action);
 
     if ($action === 'bootstrap') {
+        if (!appUsesLocalFiles()) {
+            $requestCounts = $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
+            $sessionStats = sessionTrackStats();
+            jsonResponse([
+                'current' => null,
+                'recent' => [],
+                'session_started_at' => null,
+                'history_source' => null,
+                'environment' => [
+                    'local_files' => false,
+                    'mode' => 'hosting',
+                ],
+                'suggestion_start' => null,
+                'settings' => [
+                    'request_interval_minutes' => setting('request_interval_minutes', '5'),
+                ],
+                'request_counts' => $requestCounts,
+                'stats' => [
+                    'tracks' => $sessionStats['tracks'],
+                    'track_records' => $sessionStats['tracks'],
+                    'track_missing' => 0,
+                    'tracks_e' => 0,
+                    'duplicates' => 0,
+                    'requests' => (int) $pdo->query("SELECT COUNT(*) FROM requests WHERE status='new'")->fetchColumn(),
+                    'played_today' => 0,
+                ],
+                'tags' => regiaManualTags(),
+                'automatic_tags' => regiaAutomaticTags(),
+            ]);
+        }
         $remoteBootstrap = appUsesLocalFiles() ? remoteApiFetch('bootstrap') : null;
         $live = $virtualDjHistory->snapshot();
         try { $live['current'] = $virtualDjControl->currentTrack() ?? $live['current']; } catch (Throwable) {}
@@ -45,6 +80,7 @@ try {
             FROM tracks
             WHERE UPPER(file_path) LIKE 'E:%'
         ")->fetch();
+        $eDuplicateScan = (new EDuplicateService($pdo))->latestCompleted();
         jsonResponse([
             'current' => $live['current'],
             'recent' => $live['recent'],
@@ -62,12 +98,12 @@ try {
                 'track_records'=>(int) ($trackStats['total'] ?? 0),
                 'track_missing'=>(int) ($trackStats['missing'] ?? 0),
                 'tracks_e'=>(int) ($trackStats['drive_e'] ?? 0),
-                'duplicates'=>$library->duplicateGroupCount(),
+                'duplicates'=>$eDuplicateScan ? (int)$eDuplicateScan['exact_groups'] : 0,
                 'requests'=>is_array($remoteBootstrap) ? (int) ($remoteBootstrap['stats']['requests'] ?? 0) : (int) $pdo->query("SELECT COUNT(*) FROM requests WHERE status='new'")->fetchColumn(),
                 'played_today'=>$live['total'],
             ],
-            'tags' => ['APERTURA','APERITIVO','CENA','WARMUP','URLANTE','CHIUSURA','DONNE','UOMINI','KARAOKE','BALLI DI GRUPPO','COMMERCIALE','RAP IT','CAMBIO GENERE SICURO'],
-            'automatic_tags' => ['PISTA','ALTA ENERGIA','CANTO','PICCO','RECUPERO PISTA','SUCCESSO','POPOLARE','REGGAETON','DEMBOW','BACHATA','SALSA','TIMBA','CUBATON','URBAN','EDM'],
+            'tags' => regiaManualTags(),
+            'automatic_tags' => regiaAutomaticTags(),
         ]);
     }
     if ($action === 'live') {
@@ -102,6 +138,7 @@ try {
         }
         jsonResponse(['items'=>$items]);
     }
+    if ($action === 'inbox-status') jsonResponse((new InboxService($pdo))->status((int)($_GET['limit'] ?? 200)));
     if ($action === 'track') {
         $track = $library->find((int) ($_GET['id'] ?? 0));
         $track ? jsonResponse($track) : jsonResponse(['error'=>'Brano non trovato'], 404);
@@ -117,6 +154,9 @@ try {
     if ($action === 'playlist-replace-track' && $method === 'POST') jsonResponse((new PlaylistService())->replaceInPlaylist((string)($data['file']??''),(string)($data['old_path']??''),(string)($data['new_path']??'')));
     if ($action === 'playlist-remove-track' && $method === 'POST') jsonResponse((new PlaylistService())->removeFromPlaylist((string)($data['file']??''),(int)($data['index']??-1),(string)($data['path']??'')));
     if ($action === 'duplicates') jsonResponse(['groups'=>$library->duplicates((int)($_GET['limit']??200)),'total_groups'=>$library->duplicateGroupCount(),'issues'=>$library->issues()]);
+    if ($action === 'spotify-duplicates') jsonResponse((new SpotifyDuplicateService($pdo))->groups((int)($_GET['limit'] ?? 100)));
+    if ($action === 'spotify-duplicates-report' && $method === 'POST') jsonResponse((new SpotifyDuplicateService($pdo))->writeCsv((int)($data['limit'] ?? 500)));
+    if ($action === 'spotify-duplicates-mark' && $method === 'POST') jsonResponse((new SpotifyDuplicateService($pdo))->markNonRecommended((int)($data['limit'] ?? 500)));
     if ($action === 'database-status') jsonResponse(['items'=>$library->virtualDjDatabaseStatus()]);
     if ($action === 'music-roots') jsonResponse(['items'=>$library->musicRootOptions()]);
     if ($action === 'comparison-folders') jsonResponse(['items'=>$library->comparisonFolderOptions()]);
@@ -152,8 +192,68 @@ try {
         jsonResponse(['items'=>$statement->fetchAll()]);
     }
     if ($action === 'public-search') {
+        if (!appUsesLocalFiles()) {
+            $items = (new SessionTrackService($pdo))->publicSearch((string)($_GET['q'] ?? ''), 50);
+            jsonResponse(['items'=>$items, 'source'=>'session-json']);
+        }
         $items = $library->search(['q'=>$_GET['q'] ?? '', 'limit'=>50]);
         jsonResponse(['items'=>array_map(fn($track)=>['id'=>$track['id'],'artist'=>$track['artist'],'title'=>$track['title'],'genre'=>$track['genre'],'year'=>$track['year']], $items)]);
+    }
+    if ($action === 'session-tracks-export' && $method === 'POST') {
+        if (!appUsesLocalFiles()) jsonResponse(['error'=>'Export JSON sessione disponibile solo nello Studio locale.'], 422);
+        $session = is_array($data['session'] ?? null) ? $data['session'] : $data;
+        $service = new SessionTrackService($pdo);
+        $exportPath = APP_ROOT . '/storage/exports/krdesk_session_tracks.json';
+        $sessionPath = APP_ROOT . '/storage/session/krdesk_session_tracks.json';
+        $result = $service->export($session, $exportPath);
+        if (!is_dir(dirname($sessionPath)) && !mkdir(dirname($sessionPath), 0775, true) && !is_dir(dirname($sessionPath))) {
+            throw new RuntimeException('Cartella session non creata.');
+        }
+        if (!copy($exportPath, $sessionPath)) throw new RuntimeException('Copia JSON sessione non riuscita.');
+        jsonResponse($result + ['session_path'=>$sessionPath]);
+    }
+    if ($action === 'session-tracks-publish' && $method === 'POST') {
+        if (!appUsesLocalFiles()) jsonResponse(['error'=>'Pubblicazione JSON disponibile solo nello Studio locale.'], 422);
+        $session = is_array($data['session'] ?? null) ? $data['session'] : $data;
+        $service = new SessionTrackService($pdo);
+        $sessionPath = APP_ROOT . '/storage/session/krdesk_session_tracks.json';
+        $exportPath = APP_ROOT . '/storage/exports/krdesk_session_tracks.json';
+        $result = $service->export($session, $exportPath);
+        if (!is_dir(dirname($sessionPath)) && !mkdir(dirname($sessionPath), 0775, true) && !is_dir(dirname($sessionPath))) {
+            throw new RuntimeException('Cartella session non creata.');
+        }
+        if (!copy($exportPath, $sessionPath)) throw new RuntimeException('Copia JSON sessione non riuscita.');
+        jsonResponse($result + ['session_path'=>$sessionPath, 'upload'=>(new SessionTrackUploadService(sessionTracksUploadConfig()))->publish($sessionPath)]);
+    }
+    if ($action === 'session-tracks-receive' && $method === 'POST') {
+        if (appUsesLocalFiles()) jsonResponse(['error'=>'Ricezione JSON sessione disponibile solo in hosting.'], 422);
+        $upload = new SessionTrackUploadService(sessionTracksUploadConfig());
+        $upload->assertToken(bearerToken() ?: (string)($_POST['upload_token'] ?? ''));
+        jsonResponse($upload->receive($_FILES['file'] ?? [], (string)($_POST['checksum_sha256'] ?? ''), new SessionTrackService($pdo)), 201);
+    }
+    if ($action === 'session-tracks-status') {
+        $local = sessionTrackStatus(APP_ROOT . '/storage/session/krdesk_session_tracks.json');
+        $remote = appUsesLocalFiles() ? remoteApiFetch('session-tracks-status') : null;
+        if (appUsesLocalFiles() && (!is_array($remote) || !empty($remote['error']))) {
+            $remoteBootstrap = remoteApiFetch('bootstrap');
+            if (is_array($remoteBootstrap) && isset($remoteBootstrap['stats']['tracks'])) {
+                $remote = [
+                    'ok' => true,
+                    'exists' => true,
+                    'path' => 'hosting:bootstrap',
+                    'tracks' => (int)$remoteBootstrap['stats']['tracks'],
+                    'available' => (int)($remoteBootstrap['stats']['tracks'] ?? 0),
+                    'unavailable' => 0,
+                    'generated_at' => null,
+                    'modified_at' => null,
+                    'checksum_sha256' => null,
+                    'session' => null,
+                    'error' => '',
+                    'source' => 'bootstrap-fallback',
+                ];
+            }
+        }
+        jsonResponse(['local'=>$local,'remote'=>$remote,'environment'=>appUsesLocalFiles()?'local':'hosting']);
     }
     if ($action === 'request-create' && $method === 'POST') {
         $query = trim((string) ($data['query'] ?? ''));
@@ -303,8 +403,10 @@ try {
     }
     if ($action === 'replacement-watch-start' && $method === 'POST') jsonResponse((new AudioReplacementService($pdo,$library))->start((int)($data['id']??0)));
     if ($action === 'replacement-watch-status') jsonResponse((new AudioReplacementService($pdo,$library))->status());
+    if ($action === 'replacement-watch-confirm-media-change' && $method === 'POST') jsonResponse((new AudioReplacementService($pdo,$library))->confirmMediaChange());
     if ($action === 'track-delete' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->delete((int)($data['id']??0)));
     if ($action === 'track-move' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->move((int)($data['id']??0)));
+    if ($action === 'track-move-to-delete' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->moveToDeletionFolder((int)($data['id']??0)));
     if ($action === 'spotify-identify-features' && $method === 'POST') {
         $trackId = (int) ($data['id'] ?? 0);
         $result = (new SpotifyAudioFeaturesService($pdo))->identifyAndEnrich($trackId, (bool)($data['force']??false));
@@ -337,7 +439,7 @@ try {
         jsonResponse(['ok'=>true]);
     }
     if ($action === 'settings' && $method === 'POST') {
-        $allowed = ['music_root','vdj_database','playlist_folder','definitive_playlist_folder','duplicate_threshold','recent_exclusion','bpm_range','key_mode','vdj_network_port','kr_formula_weights','request_interval_minutes','discogs_consumer_key','discogs_consumer_secret','discogs_request_token_url','discogs_authorize_url','discogs_access_token_url','beatport_api_base_url','beatport_track_endpoint','beatport_bulk_endpoint'];
+        $allowed = ['music_root','vdj_database','playlist_folder','definitive_playlist_folder','spotmate_download_folder','duplicate_threshold','recent_exclusion','bpm_range','key_mode','vdj_network_port','kr_formula_weights','request_interval_minutes','discogs_consumer_key','discogs_consumer_secret','discogs_request_token_url','discogs_authorize_url','discogs_access_token_url','beatport_api_base_url','beatport_track_endpoint','beatport_bulk_endpoint'];
         $statement = $pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
         foreach ($allowed as $key) if (array_key_exists($key,$data)) $statement->execute([$key,(string)$data[$key]]);
         jsonResponse(['ok'=>true]);
@@ -359,7 +461,7 @@ try {
         jsonResponse(['ok'=>true]);
     }
     if ($action === 'e-duplicates-mark-nonrecommended' && $method === 'POST') {
-        $updated = (new EDuplicateService($pdo))->markNonRecommended((string)($data['folder']??''));
+        $updated = (new EDuplicateService($pdo))->markNonRecommended((string)($data['folder']??''),(string)($data['type']??'all'));
         jsonResponse(['ok'=>true,'updated'=>$updated]);
     }
     if ($action === 'compare-folder-e' && $method === 'POST') jsonResponse((new EComparisonService($pdo))->compare((string)($data['folder']??'')));
@@ -437,6 +539,215 @@ function shouldProxyToHosting(string $action): bool
         'quiz-prefill',
         'network-info',
     ], true);
+}
+
+function enforceApiArea(string $action): void
+{
+    if (appUsesLocalFiles()) return;
+    if (in_array($action, apiRegiaHostingActions(), true)) return;
+    if (in_array($action, apiStudioLocalActions(), true) || in_array($action, apiRegiaLocalActions(), true)) {
+        jsonResponse([
+            'error' => 'Endpoint disponibile solo nello Studio locale o sul PC DJ.',
+            'action' => $action,
+            'area' => in_array($action, apiStudioLocalActions(), true) ? 'studio-local' : 'regia-local',
+        ], 403);
+    }
+}
+
+function sessionTrackStatus(string $path): array
+{
+    $status = [
+        'ok' => false,
+        'exists' => is_file($path),
+        'path' => str_replace(APP_ROOT . '/', '', str_replace('\\', '/', $path)),
+        'tracks' => 0,
+        'available' => 0,
+        'unavailable' => 0,
+        'generated_at' => null,
+        'modified_at' => null,
+        'checksum_sha256' => null,
+        'session' => null,
+        'error' => '',
+    ];
+    if (!$status['exists']) {
+        $status['error'] = 'JSON sessione non presente.';
+        return $status;
+    }
+    $status['modified_at'] = date(DATE_ATOM, (int)filemtime($path));
+    $status['checksum_sha256'] = hash_file('sha256', $path) ?: null;
+    try {
+        $payload = (new SessionTrackService(db()))->load($path);
+        $stats = is_array($payload['stats'] ?? null) ? $payload['stats'] : [];
+        $tracks = is_array($payload['tracks'] ?? null) ? $payload['tracks'] : [];
+        $status['ok'] = true;
+        $status['tracks'] = (int)($stats['tracks'] ?? count($tracks));
+        $status['available'] = (int)($stats['available'] ?? count(array_filter($tracks, fn(array $track): bool => !empty($track['available']))));
+        $status['unavailable'] = (int)($stats['unavailable'] ?? max(0, $status['tracks'] - $status['available']));
+        $status['generated_at'] = (string)($payload['generated_at'] ?? '');
+        $status['session'] = is_array($payload['session'] ?? null) ? $payload['session'] : null;
+    } catch (Throwable $error) {
+        $status['error'] = $error->getMessage();
+    }
+    return $status;
+}
+
+function sessionTrackStats(): array
+{
+    $path = APP_ROOT . '/storage/session/krdesk_session_tracks.json';
+    if (!is_file($path)) return ['tracks' => 0, 'available' => 0, 'unavailable' => 0];
+    $payload = json_decode((string)file_get_contents($path), true);
+    if (!is_array($payload)) return ['tracks' => 0, 'available' => 0, 'unavailable' => 0];
+    $stats = is_array($payload['stats'] ?? null) ? $payload['stats'] : [];
+    return [
+        'tracks' => (int)($stats['tracks'] ?? count((array)($payload['tracks'] ?? []))),
+        'available' => (int)($stats['available'] ?? 0),
+        'unavailable' => (int)($stats['unavailable'] ?? 0),
+    ];
+}
+
+function regiaManualTags(): array
+{
+    return ['APERTURA','APERITIVO','CENA','WARMUP','URLANTE','CHIUSURA','DONNE','UOMINI','KARAOKE','BALLI DI GRUPPO','COMMERCIALE','RAP IT','CAMBIO GENERE SICURO'];
+}
+
+function regiaAutomaticTags(): array
+{
+    return ['PISTA','ALTA ENERGIA','CANTO','PICCO','RECUPERO PISTA','SUCCESSO','POPOLARE','REGGAETON','DEMBOW','BACHATA','SALSA','TIMBA','CUBATON','URBAN','EDM'];
+}
+
+function sessionTracksUploadConfig(): array
+{
+    return (array)(appConfig()['session_tracks_upload'] ?? []);
+}
+
+function bearerToken(): string
+{
+    $header = (string)($_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    return preg_match('/^Bearer\s+(.+)$/i', $header, $match) ? trim($match[1]) : '';
+}
+
+function apiRegiaHostingActions(): array
+{
+    return [
+        'bootstrap',
+        'live',
+        'requests',
+        'public-search',
+        'request-create',
+        'request-status',
+        'request-estimates-refresh',
+        'request-automix-debug',
+        'request-update',
+        'request-delete',
+        'quiz-state',
+        'quiz-history',
+        'quiz-create',
+        'quiz-launch',
+        'quiz-close',
+        'quiz-reveal',
+        'quiz-join',
+        'quiz-answer',
+        'quiz-heartbeat',
+        'quiz-leave',
+        'quiz-participant-action',
+        'quiz-prefill',
+        'network-info',
+        'session-tracks-receive',
+        'session-tracks-status',
+    ];
+}
+
+function apiRegiaLocalActions(): array
+{
+    return [
+        'suggestions',
+        'suggestion-start',
+        'vdj-control-status',
+        'vdj-automix-add',
+        'vdj-prelisten',
+        'vdj-prelisten-stop',
+        'queue',
+        'played',
+        'quiz-codex-suggest',
+    ];
+}
+
+function apiStudioLocalActions(): array
+{
+    return [
+        'tracks',
+        'track',
+        'track-update',
+        'studio-issues',
+        'inbox-status',
+        'playlists',
+        'playlist-create',
+        'playlist-detail',
+        'playlist-candidates',
+        'playlist-external-compare',
+        'playlist-external-folder-match',
+        'playlist-external-apply-metadata',
+        'playlist-save-order',
+        'playlist-replace-track',
+        'playlist-remove-track',
+        'duplicates',
+        'spotify-duplicates',
+        'spotify-duplicates-report',
+        'spotify-duplicates-mark',
+        'duplicate-decision',
+        'database-status',
+        'music-roots',
+        'comparison-folders',
+        'definitive-library-folders',
+        'e-duplicates-status',
+        'e-duplicates',
+        'e-duplicates-scan',
+        'e-duplicates-refresh-recommendations',
+        'e-duplicates-decision',
+        'e-duplicates-mark-nonrecommended',
+        'deletion-candidates',
+        'deletion-candidate-decision',
+        'deletion-candidates-mark-all',
+        'deletion-candidates-approve-all',
+        'deletion-candidates-clear',
+        'approved-folder-summary',
+        'compare-folder-e',
+        'vdj-search-candidate',
+        'vdj-align-artist-title',
+        'spotify-audio-features',
+        'spotify-link-update',
+        'spotify-clipboard-start',
+        'spotify-clipboard-status',
+        'spotify-identify-features',
+        'spotify-identify',
+        'spotify-candidates',
+        'replacement-watch-start',
+        'replacement-watch-status',
+        'replacement-watch-confirm-media-change',
+        'track-delete',
+        'track-move',
+        'track-move-to-delete',
+        'touch-tracks',
+        'touch-track-file',
+        'bulk-track-tags',
+        'bulk-vdj-metadata',
+        'auto-tag-override',
+        'vdj-genre-stats',
+        'library-standard-validate',
+        'library-standard-test',
+        'import-vdj',
+        'sync-all',
+        'reconcile-vdj',
+        'prune-library',
+        'import-m3u',
+        'scan',
+        'open-folder',
+        'settings',
+        'recalculate-kr',
+        'session-tracks-export',
+        'session-tracks-publish',
+        'session-tracks-status',
+    ];
 }
 
 function remoteApiFetch(string $action, string $method = 'GET', array $data = []): ?array

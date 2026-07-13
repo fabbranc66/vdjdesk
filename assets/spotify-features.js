@@ -84,7 +84,26 @@ let spotifyClipboardTimer=null;
 document.addEventListener('click',async event=>{const link=event.target.closest('.spotify-search-link');if(!link)return;event.preventDefault();const url=link.href;const trackId=Number(link.dataset.trackId);const force=link.dataset.force==='1';delete link.dataset.force;const spotifyWindow=window.open('about:blank','vdjdesk_spotify');try{await post('spotify-clipboard-start',{id:trackId,force});toast(`${force?'ID e link ignorati - ':''}appunti azzerati - copia il link del brano da Spotify`);if(spotifyWindow){spotifyWindow.location.href=url;spotifyWindow.focus()}clearInterval(spotifyClipboardTimer);spotifyClipboardTimer=setInterval(async()=>{try{const result=await api(`spotify-clipboard-status&id=${trackId}`);if(!result.pending){clearInterval(spotifyClipboardTimer);spotifyClipboardTimer=null;if(result.saved){spotifyWindow?.close();window.focus();const index=state.tracks.findIndex(track=>Number(track.id)===Number(result.track.id));if(index>=0)state.tracks[index]=result.track;renderTracks();decorateSpotifyTracks();toast('Link Spotify acquisito e salvato nel database')}else toast('Acquisizione link Spotify scaduta')}}catch(error){}},1200)}catch(error){spotifyWindow?.close();toast(error.message)}});
 
 let replacementWatchTimer=null;
-document.addEventListener('click',async event=>{const link=event.target.closest('.spotmate-link');if(!link)return;event.preventDefault();try{await post('replacement-watch-start',{id:Number(link.dataset.trackId)});await navigator.clipboard.writeText(link.dataset.spotifyUrl);toast('SpotMate attivo - monitoraggio download avviato');const spotmateWindow=window.open(link.href,'vdjdesk_spotmate');spotmateWindow?.focus();clearInterval(replacementWatchTimer);replacementWatchTimer=setInterval(async()=>{try{const result=await api('replacement-watch-status');if(result.completed){clearInterval(replacementWatchTimer);replacementWatchTimer=null;spotmateWindow?.close();window.focus();const index=state.tracks.findIndex(track=>Number(track.id)===Number(result.track.id));if(index>=0)state.tracks[index]=result.track;renderTracks();decorateSpotifyTracks();toast(result.spotify_updated?'Nuovo audio installato - metriche Spotify aggiornate':`Nuovo audio installato - metriche non aggiornate: ${result.spotify_error||'errore Spotify'}`)}else if(!result.pending){clearInterval(replacementWatchTimer);replacementWatchTimer=null;if(result.expired)toast('Monitoraggio download scaduto')}}catch(error){clearInterval(replacementWatchTimer);replacementWatchTimer=null;toast(error.message)}},1500)}catch(error){toast(error.message)}});
+async function handleReplacementWatchResult(result,spotmateWindow){
+  if(result.requires_confirmation){
+    clearInterval(replacementWatchTimer);replacementWatchTimer=null;
+    const ok=window.confirm(`ATTENZIONE: ${result.warning}\n\nOriginale: ${result.old_path}\n\nDownload: ${result.download_path}\n\nConfermi la sostituzione tra media diversi?`);
+    if(!ok){toast('Sostituzione media annullata: file lasciato in Da_classificare');return}
+    await post('replacement-watch-confirm-media-change',{});
+    result=await api('replacement-watch-status');
+  }
+  if(result.completed){
+    clearInterval(replacementWatchTimer);replacementWatchTimer=null;spotmateWindow?.close();window.focus();
+    const index=state.tracks.findIndex(track=>Number(track.id)===Number(result.track.id));
+    if(index>=0)state.tracks[index]=result.track;
+    renderTracks();decorateSpotifyTracks();
+    toast(result.spotify_updated?'Nuovo media installato - metriche Spotify aggiornate':`Nuovo media installato - metriche non aggiornate: ${result.spotify_error||'errore Spotify'}`);
+  }else if(!result.pending){
+    clearInterval(replacementWatchTimer);replacementWatchTimer=null;
+    if(result.expired)toast('Monitoraggio download scaduto');
+  }
+}
+document.addEventListener('click',async event=>{const link=event.target.closest('.spotmate-link');if(!link)return;event.preventDefault();try{const watch=await post('replacement-watch-start',{id:Number(link.dataset.trackId)});await navigator.clipboard.writeText(link.dataset.spotifyUrl);toast(`SpotMate attivo - scarica in Downloads; poi sposto in ${watch.staging_folder||'Da_classificare'}`);const spotmateWindow=window.open(link.href,'vdjdesk_spotmate');spotmateWindow?.focus();clearInterval(replacementWatchTimer);replacementWatchTimer=setInterval(async()=>{try{await handleReplacementWatchResult(await api('replacement-watch-status'),spotmateWindow)}catch(error){clearInterval(replacementWatchTimer);replacementWatchTimer=null;toast(error.message)}},1500)}catch(error){toast(error.message)}});
 
 function updateBulkSpotifyButton(){
   if(bulkSpotifyButton.disabled)return;
@@ -126,7 +145,7 @@ function decorateSpotifyTracks(){
     if(!menu||menu.querySelector('[data-action="spotify-features"]'))return;
     const button=document.createElement('button');button.dataset.action='spotify-features';button.textContent=['complete','partial','unavailable'].includes(track.spotify_features_status)?'Forza aggiornamento Spotify':'Recupera metriche Spotify';button.disabled=!track.spotify_id;menu.prepend(button);
     const moveButton=document.createElement('button');moveButton.dataset.action='library-move';moveButton.textContent='Sposta nella cartella genere';menu.append(moveButton);
-    const deleteButton=document.createElement('button');deleteButton.dataset.action='library-delete';deleteButton.textContent='Elimina file';menu.append(deleteButton);
+    const deleteButton=document.createElement('button');deleteButton.dataset.action='library-move-to-delete';deleteButton.textContent='Sposta in Da_cancellare';menu.append(deleteButton);
   });
   updateBulkSpotifyButton();
 }
@@ -153,4 +172,4 @@ forceSpotifyButton.addEventListener('click',async()=>{const tracks=state.tracks.
 decorateGlobalActionButtons();
 decorateSpotifyTracks();
 
-document.addEventListener('click',async event=>{const button=event.target.closest('[data-action="library-delete"]');if(!button)return;event.preventDefault();event.stopPropagation();const row=button.closest('.track-row');const track=state.tracks.find(item=>Number(item.id)===Number(row?.dataset.id));if(!track)return;const warning=String(track.file_path||'').toUpperCase().startsWith('E:\\')?'ATTENZIONE: il file e nella libreria definitiva E:.\n\n':'';if(!window.confirm(`${warning}Cancellare definitivamente il file?\n\n${track.artist} - ${track.title}\n${track.file_path}`))return;button.disabled=true;try{await post('track-delete',{id:track.id});state.tracks=state.tracks.filter(item=>Number(item.id)!==Number(track.id));if(typeof playlistAllTracks!=='undefined'&&Array.isArray(playlistAllTracks))playlistAllTracks=playlistAllTracks.filter(item=>Number(item.id)!==Number(track.id));if(typeof playlistOriginalTracks!=='undefined'&&Array.isArray(playlistOriginalTracks))playlistOriginalTracks=playlistOriginalTracks.filter(item=>Number(item.id)!==Number(track.id));row.remove();const resultsCount=$('#results-count');if(resultsCount)resultsCount.textContent=`${state.tracks.length} risultati`;const playlistCount=$('#playlist-count');if(playlistCount&&$('#view-playlists')?.classList.contains('active'))playlistCount.textContent=`${state.tracks.length} di ${typeof playlistAllTracks!=='undefined'?playlistAllTracks.length:state.tracks.length}`;toast('File cancellato e rimosso dalla libreria')}catch(error){toast(error.message)}finally{button.disabled=false}});
+document.addEventListener('click',async event=>{const button=event.target.closest('[data-action="library-move-to-delete"]');if(!button)return;event.preventDefault();event.stopPropagation();const row=button.closest('.track-row');const track=state.tracks.find(item=>Number(item.id)===Number(row?.dataset.id));if(!track)return;if(!window.confirm(`Spostare il file in Da_cancellare?\n\nIl file NON verra eliminato definitivamente.\n\n${track.artist} - ${track.title}\n${track.file_path}`))return;button.disabled=true;try{const result=await post('track-move-to-delete',{id:track.id});const index=state.tracks.findIndex(item=>Number(item.id)===Number(track.id));if(index>=0)state.tracks[index]=result.track;renderTracks();decorateSpotifyTracks();toast('File spostato in Da_cancellare')}catch(error){toast(error.message)}finally{button.disabled=false}});

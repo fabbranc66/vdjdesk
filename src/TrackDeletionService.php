@@ -61,6 +61,32 @@ final class TrackDeletionService
         return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];
     }
 
+    public function moveToDeletionFolder(int $trackId): array
+    {
+        $track=$this->library->find($trackId);
+        if(!$track)throw new RuntimeException('Brano non trovato.');
+        $source=canonicalPath((string)$track['file_path']);
+        if(!is_file($source))throw new RuntimeException('File fisico non disponibile.');
+        $destination=self::LIBRARY_ROOT.'\\01_INBOX\\Da_cancellare';
+        if(!is_dir($destination))throw new RuntimeException('Cartella Da_cancellare non disponibile: '.$destination);
+        if(str_starts_with(strtoupper($source),strtoupper($destination.'\\')))throw new RuntimeException('Il file e gia nella cartella Da_cancellare.');
+        $target=$destination.'\\'.basename($source);
+        if(file_exists($target))throw new RuntimeException('Un file con lo stesso nome e gia presente in Da_cancellare.');
+        $this->releaseVirtualDjHandle();
+        $size=(int)filesize($source);
+        if(!@rename($source,$target)){
+            if(!@copy($source,$target)||(int)filesize($target)!==$size){@unlink($target);throw new RuntimeException('Spostamento in Da_cancellare non riuscito.');}
+            if(!@unlink($source)){@unlink($target);throw new RuntimeException('Impossibile completare lo spostamento in Da_cancellare.');}
+        }
+        clearstatcache(true,$target);
+        if(!is_file($target)||file_exists($source)||(int)filesize($target)!==$size)throw new RuntimeException('Verifica finale dello spostamento non riuscita.');
+        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$target,basename($target),dirname($target),(int)filesize($target),$trackId]);
+        $this->pdo->prepare("UPDATE deletion_candidates SET status='moved',moved_to_path=?,moved_at=CURRENT_TIMESTAMP,decision_note='Spostato in Da_cancellare dalla Libreria KR Desk',last_seen_at=CURRENT_TIMESTAMP WHERE source_path=?")
+            ->execute([$target,$source]);
+        return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];
+    }
+
     private function genreFolder(string $genre): string
     {
         $normalized=mb_strtolower(trim($genre));

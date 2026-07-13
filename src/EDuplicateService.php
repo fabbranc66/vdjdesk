@@ -102,13 +102,15 @@ final class EDuplicateService
         $statement->execute([$decision,$groupId]);
     }
 
-    public function markNonRecommended(string $folderRoot): int
+    public function markNonRecommended(string $folderRoot, string $type = 'all'): int
     {
         if ($folderRoot === '' || !str_starts_with(strtoupper($folderRoot), 'E:\\')) throw new RuntimeException('Seleziona una cartella del drive E:.');
+        if (!in_array($type, ['all','exact','normalized'], true)) throw new RuntimeException('Tipo doppione non valido.');
         $scan = $this->latest();
         if (!$scan) throw new RuntimeException('Esegui prima il controllo doppioni E:.');
         $root = rtrim($folderRoot, '\\');
-        $statement = $this->pdo->prepare(<<<'SQL'
+        $typeSql = $type === 'all' ? '' : ' AND g.type=?';
+        $statement = $this->pdo->prepare(<<<SQL
             SELECT g.type,g.confidence,g.reason,source.file_path source_path,source.folder source_folder,
                    source.file_name source_name,source.file_size source_size,
                    keep.file_path e_file_path,keep.file_name e_file_name,keep.file_size e_file_size
@@ -116,9 +118,11 @@ final class EDuplicateService
             JOIN e_duplicate_group_items source_link ON source_link.group_id=g.id AND source_link.is_recommended=0
             JOIN e_file_inventory source ON source.id=source_link.file_id
             JOIN e_file_inventory keep ON keep.id=g.recommended_file_id
-            WHERE g.scan_id=? AND (source.folder=? OR source.folder LIKE ?)
+            WHERE g.scan_id=? AND (source.folder=? OR source.folder LIKE ?)$typeSql
         SQL);
-        $statement->execute([(int)$scan['id'],$root,$root.'\\%']);
+        $params = [(int)$scan['id'],$root,$root.'\\%'];
+        if ($type !== 'all') $params[] = $type;
+        $statement->execute($params);
         $upsert = $this->pdo->prepare(<<<'SQL'
             INSERT INTO deletion_candidates(source_path,source_folder,source_name,source_size,e_file_path,e_file_name,e_file_size,match_type,confidence,reason,status)
             VALUES(?,?,?,?,?,?,?,?,?,?,'marked')
@@ -172,7 +176,7 @@ final class EDuplicateService
 
     private function createExactGroups(int $scanId): int
     {
-        $familySql = "CASE WHEN extension IN ('mp4','mkv','vob') THEN 'video' ELSE 'audio' END";
+        $familySql = "'media'";
         $sizes = $this->pdo->prepare("SELECT $familySql family,file_size FROM e_file_inventory WHERE scan_id=? AND file_size>0 GROUP BY family,file_size HAVING COUNT(*)>1");
         $sizes->execute([$scanId]);
         $files = $this->pdo->prepare("SELECT id,file_path FROM e_file_inventory WHERE scan_id=? AND $familySql=? AND file_size=?");
@@ -217,7 +221,7 @@ final class EDuplicateService
 
     private function createNormalizedGroups(int $scanId): int
     {
-        $familySql = "CASE WHEN extension IN ('mp4','mkv','vob') THEN 'video' ELSE 'audio' END";
+        $familySql = "'media'";
         $groups = $this->pdo->prepare("SELECT $familySql family,normalized_artist,normalized_title FROM e_file_inventory WHERE scan_id=? AND normalized_title<>'' GROUP BY family,normalized_artist,normalized_title HAVING COUNT(*)>1");
         $groups->execute([$scanId]);
         $count = 0;

@@ -55,6 +55,10 @@
           <span class="muted-label">DURATA SERATA</span><strong id="session-timer">00:00:00</strong>
           <div class="session-stats"><div><b id="played-count">0</b><span>Suonati</span></div><div><b id="new-requests">0</b><span>Richieste</span></div></div><span id="dup-count" hidden></span>
         </article>
+        <article class="session-card panel" id="session-json-card">
+          <span class="muted-label">JSON REGIA</span><strong id="session-json-tracks">--</strong>
+          <div class="session-stats"><div><b id="session-json-available">--</b><span>Disponibili</span></div><div><b id="session-json-hosting">--</b><span>Hosting</span></div></div><small id="session-json-updated" class="muted-label">Controllo JSON...</small>
+        </article>
       </div>
       <div class="section-head"><div><span class="kicker">AZIONI RAPIDE</span><h2>Che direzione prende la pista?</h2></div></div>
       <div class="quick-grid" id="quick-actions">
@@ -95,6 +99,7 @@
         <button type="button" class="panel studio-action-card" data-view-link="duplicates"><span>QC</span><strong>Qualita / Doppioni</strong><small>Confronto E, marcati, approvati e pulizia.</small></button>
         <button type="button" class="panel studio-action-card" data-view-link="analysis"><span>ANA</span><strong>Analisi</strong><small>Generi, standard e report tecnici.</small></button>
         <button type="button" class="panel studio-action-card" data-view-link="settings"><span>CFG</span><strong>Configurazione</strong><small>Percorsi, sync VDJ, soglie e formule.</small></button>
+        <button type="button" class="panel studio-action-card publish-session-json"><span>JSON</span><strong>Genera + carica hosting</strong><small>Aggiorna la ricerca pubblica Regia dal JSON sessione.</small></button>
       </div>
       <article class="panel studio-status-panel"><div class="panel-label"><span>DATABASE VIRTUALDJ</span><button type="button" class="text-button" data-view-link="settings">Apri configurazione</button></div><div id="studio-database-summary" class="compact-list empty-state">Lettura stato database...</div></article>
     </section>
@@ -143,7 +148,7 @@
     <section class="view" id="view-duplicates">
       <article class="panel e-duplicate-procedure"><div><span class="kicker">CONTROLLO MIRATO</span><h2>Scegli la cartella da analizzare</h2><p>Cartella su E: → doppioni interni. Cartella su altro drive → confronto con E: e archivio dei candidati alla cancellazione.</p></div><div class="duplicate-folder-control"><select id="duplicate-folder"><option value="">Scegli una cartella…</option></select><button id="scan-e-duplicates" class="button primary">Controlla cartella</button></div></article>
       <div id="issue-cards" class="metric-grid"></div>
-      <div class="section-head"><div><span class="kicker">REVISIONE MANUALE</span><h2 id="duplicate-results-title">Risultati della cartella</h2></div><div class="button-row"><button id="mark-all-candidates" class="button accent">Marca non consigliati</button><button id="approve-all-marked" class="button primary hidden">Approvali tutti</button><button id="search-move-all-approved" class="button primary hidden">Cerca e sposta tutto</button><button id="show-marked-candidates" class="button ghost">Marcati da approvare</button><button id="show-approved-candidates" class="button ghost">Archivio approvati</button><button id="clear-candidate-states" class="button ghost">Azzera stati archivio</button><button id="refresh-duplicates" class="hidden" aria-hidden="true"></button></div></div>
+      <div class="section-head"><div><span class="kicker">REVISIONE MANUALE</span><h2 id="duplicate-results-title">Risultati della cartella</h2></div><div class="button-row"><button id="show-spotify-duplicates" class="button ghost">Doppioni Spotify</button><button id="export-spotify-duplicates" class="button ghost">CSV Spotify</button><button id="mark-all-candidates" class="button accent">Marca non consigliati</button><button id="approve-all-marked" class="button primary hidden">Approva tutti</button><button id="search-move-all-approved" class="button primary hidden">Cerca e sposta tutto</button><button id="show-marked-candidates" class="button ghost">Marcati da approvare</button><button id="show-approved-candidates" class="button ghost">Archivio approvati</button><button id="clear-candidate-states" class="button ghost">Azzera stati archivio</button><button id="refresh-duplicates" class="hidden" aria-hidden="true"></button></div></div>
       <div id="duplicates-list" class="duplicates-list"></div>
     </section>
 
@@ -187,8 +192,9 @@
           <label>Database VirtualDJ XML<input name="vdj_database"></label>
           <label>Cartella playlist VirtualDJ<input name="playlist_folder"></label>
           <label>Playlist libreria definitiva<input name="definitive_playlist_folder"></label>
+          <label>Cartella download SpotMate<input name="spotmate_download_folder" placeholder="E:\LIBRERIA_DEFINITIVA\01_INBOX\Da_classificare"></label>
           <label>Porta VirtualDJ Network Control<input name="vdj_network_port" type="number" min="1" max="65535"></label>
-          <div class="button-row"><button type="button" class="button primary" id="sync-all-vdj">Sincronizza tutti i DB</button><button type="button" class="button accent" id="reconcile-vdj">Riconcilia database</button><button type="button" class="button accent" id="import-vdj">Importa solo principale</button><button type="button" class="button ghost" id="scan-music">Scansiona musica</button></div>
+          <div class="button-row"><button type="button" class="button primary" id="sync-all-vdj">Sincronizza tutti i DB</button><button type="button" class="button accent" id="reconcile-vdj">Riconcilia database</button><button type="button" class="button accent" id="import-vdj">Importa solo principale</button><button type="button" class="button ghost" id="scan-music">Scansiona musica</button><button type="button" class="button primary publish-session-json" id="publish-session-json">Genera + carica hosting</button></div>
           <p class="form-note">Network Control usa <code>127.0.0.1:9665</code> senza autenticazione. La sincronizzazione non scrive nei database VirtualDJ.</p>
           <div id="database-status" class="database-status"><div class="empty-state">Lettura stato database…</div></div>
         </article>
