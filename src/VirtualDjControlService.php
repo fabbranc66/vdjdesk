@@ -7,7 +7,15 @@ final class VirtualDjControlService
 
     public function status(): array
     {
-        return ['online'=>true,'version'=>$this->request('query','get_version'),'port'=>(int)setting('vdj_network_port','9665'),'authentication'=>false];
+        $host = setting('vdj_network_host','127.0.0.1');
+        $port = min(65535,max(1,(int)setting('vdj_network_port','9665')));
+        $started = microtime(true);
+        try {
+            $version = $this->request('query','get_version');
+            return ['online'=>true,'version'=>$version,'host'=>$host,'port'=>$port,'latency_ms'=>(int)round((microtime(true)-$started)*1000),'authentication'=>false,'error'=>''];
+        } catch (Throwable $error) {
+            return ['online'=>false,'version'=>'','host'=>$host,'port'=>$port,'latency_ms'=>(int)round((microtime(true)-$started)*1000),'authentication'=>false,'error'=>$error->getMessage()];
+        }
     }
 
     public function currentTrack(): ?array
@@ -188,9 +196,20 @@ final class VirtualDjControlService
     {
         $host = setting('vdj_network_host','127.0.0.1');
         $port = min(65535,max(1,(int)setting('vdj_network_port','9665')));
-        $context = stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: text/plain\r\nConnection: close\r\n",'content'=>$script,'timeout'=>3,'ignore_errors'=>true]]);
+        if (!$this->isReachable($host, $port)) {
+            throw new RuntimeException("VirtualDJ Network Control offline su $host:$port.");
+        }
+        $context = stream_context_create(['http'=>['method'=>'POST','header'=>"Content-Type: text/plain\r\nConnection: close\r\n",'content'=>$script,'timeout'=>1,'ignore_errors'=>true]]);
         $response = @file_get_contents("http://$host:$port/$endpoint",false,$context);
-        if ($response === false) throw new RuntimeException("VirtualDJ Network Control non raggiungibile sulla porta $port.");
+        if ($response === false) throw new RuntimeException("VirtualDJ Network Control non risponde su $host:$port.");
         return trim($response);
+    }
+
+    private function isReachable(string $host, int $port): bool
+    {
+        $socket = @fsockopen($host, $port, $errno, $error, 0.25);
+        if (!$socket) return false;
+        fclose($socket);
+        return true;
     }
 }

@@ -66,7 +66,21 @@ try {
         }
         $remoteBootstrap = appUsesLocalFiles() ? remoteApiFetch('bootstrap') : null;
         $live = $virtualDjHistory->snapshot();
-        try { $live['current'] = $virtualDjControl->currentTrack() ?? $live['current']; } catch (Throwable) {}
+        $vdjStatus = $virtualDjControl->status();
+        $live['current'] = null;
+        $live['current_source'] = 'none';
+        $live['vdj_control'] = $vdjStatus;
+        if (!empty($vdjStatus['online'])) {
+            try {
+                $networkCurrent = $virtualDjControl->currentTrack();
+                if ($networkCurrent) {
+                    $live['current'] = $networkCurrent;
+                    $live['current_source'] = 'network-control';
+                }
+            } catch (Throwable $error) {
+                $live['vdj_control']['error'] = $error->getMessage();
+            }
+        }
         $settings = $pdo->query('SELECT `key`,value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $suggestionStart = !empty($settings['suggestion_start_track_id']) ? $library->find((int) $settings['suggestion_start_track_id']) : null;
         $requestCounts = is_array($remoteBootstrap) ? (array) ($remoteBootstrap['request_counts'] ?? []) : $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
@@ -84,6 +98,8 @@ try {
         jsonResponse([
             'current' => $live['current'],
             'recent' => $live['recent'],
+            'current_source' => $live['current_source'] ?? 'none',
+            'vdj_control' => $live['vdj_control'] ?? null,
             'session_started_at' => $live['started_at'],
             'history_source' => $live['source_file'],
             'environment' => [
@@ -108,7 +124,21 @@ try {
     }
     if ($action === 'live') {
         $live = $virtualDjHistory->snapshot();
-        try { $live['current'] = $virtualDjControl->currentTrack() ?? $live['current']; } catch (Throwable) {}
+        $vdjStatus = $virtualDjControl->status();
+        $live['current'] = null;
+        $live['current_source'] = 'none';
+        $live['vdj_control'] = $vdjStatus;
+        if (!empty($vdjStatus['online'])) {
+            try {
+                $networkCurrent = $virtualDjControl->currentTrack();
+                if ($networkCurrent) {
+                    $live['current'] = $networkCurrent;
+                    $live['current_source'] = 'network-control';
+                }
+            } catch (Throwable $error) {
+                $live['vdj_control']['error'] = $error->getMessage();
+            }
+        }
         $live['requests'] = (int) $pdo->query("SELECT COUNT(*) FROM requests WHERE status='new'")->fetchColumn();
         jsonResponse($live);
     }
@@ -197,7 +227,7 @@ try {
             jsonResponse(['items'=>$items, 'source'=>'session-json']);
         }
         $items = $library->search(['q'=>$_GET['q'] ?? '', 'limit'=>50]);
-        jsonResponse(['items'=>array_map(fn($track)=>['id'=>$track['id'],'artist'=>$track['artist'],'title'=>$track['title'],'genre'=>$track['genre'],'year'=>$track['year']], $items)]);
+        jsonResponse(['items'=>array_map(fn($track)=>['id'=>$track['id'],'artist'=>$track['artist'],'title'=>$track['title'],'genre'=>$track['genre'],'year'=>$track['year']], $items), 'source'=>'db-local']);
     }
     if ($action === 'session-tracks-export' && $method === 'POST') {
         if (!appUsesLocalFiles()) jsonResponse(['error'=>'Export JSON sessione disponibile solo nello Studio locale.'], 422);

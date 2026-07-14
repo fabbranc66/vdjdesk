@@ -55,10 +55,6 @@
           <span class="muted-label">DURATA SERATA</span><strong id="session-timer">00:00:00</strong>
           <div class="session-stats"><div><b id="played-count">0</b><span>Suonati</span></div><div><b id="new-requests">0</b><span>Richieste</span></div></div><span id="dup-count" hidden></span>
         </article>
-        <article class="session-card panel" id="session-json-card">
-          <span class="muted-label">JSON REGIA</span><strong id="session-json-tracks">--</strong>
-          <div class="session-stats"><div><b id="session-json-available">--</b><span>Disponibili</span></div><div><b id="session-json-hosting">--</b><span>Hosting</span></div></div><small id="session-json-updated" class="muted-label">Controllo JSON...</small>
-        </article>
       </div>
       <div class="section-head"><div><span class="kicker">AZIONI RAPIDE</span><h2>Che direzione prende la pista?</h2></div></div>
       <div class="quick-grid" id="quick-actions">

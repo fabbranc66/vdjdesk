@@ -321,13 +321,21 @@ final class LibraryService
             }
             $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id)");
             $changed = count(array_filter($results, fn($item) => $item['status'] === 'synced'));
-            $removed = $changed > 0 ? $this->removeMissingLocalTracks() : 0;
+            $inboxScan = $this->scanConfiguredInbox();
+            $removed = $this->removeMissingLocalTracks() + $this->removeMissingDeletionFolderTracks();
             $pruned = $this->pruneToDefinitiveLibrary();
-            return ['databases'=>$results,'changed'=>$changed,'removed'=>$removed,'pruned'=>$pruned,'total'=>count($results)];
+            return ['databases'=>$results,'changed'=>$changed,'inbox_scan'=>$inboxScan,'removed'=>$removed,'pruned'=>$pruned,'total'=>count($results)];
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
         }
+    }
+
+    private function scanConfiguredInbox(): ?array
+    {
+        $path = canonicalPath((string) setting('spotmate_download_folder', ''));
+        if ($path === '' || !is_dir($path)) return null;
+        return $this->scan($path);
     }
 
     public function reconcileVirtualDjDatabases(): array
@@ -336,10 +344,11 @@ final class LibraryService
         $sync=$this->syncAllVirtualDjDatabases(true);
         $orphans=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks t WHERE t.source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=t.id)")->fetchColumn();
         $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=tracks.id)");
+        $deletedFolderMissing=$this->removeMissingDeletionFolderTracks();
         $pruned=$this->pruneToDefinitiveLibrary();
         $after=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
         $linked=(int)$this->pdo->query('SELECT COUNT(DISTINCT track_id) FROM track_sources')->fetchColumn();
-        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>$orphans,'pruned'=>$pruned,'linked'=>$linked,'sync'=>$sync];
+        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>$orphans + $deletedFolderMissing,'pruned'=>$pruned,'linked'=>$linked,'sync'=>$sync];
     }
 
     public function pruneToDefinitiveLibrary(): array
@@ -577,6 +586,20 @@ final class LibraryService
             if (!preg_match('/^E:\\\\/i', $path)) continue;
             $drive = strtoupper($path[0]) . ':\\';
             if (!is_dir($drive) || is_file($path)) continue;
+            $delete->execute([(int) $row['id']]);
+            $removed += $delete->rowCount();
+        }
+        return $removed;
+    }
+
+    private function removeMissingDeletionFolderTracks(): int
+    {
+        $rows = $this->pdo->query("SELECT id,file_path FROM tracks WHERE UPPER(folder) LIKE '%DA_CANCELLARE%' OR UPPER(file_path) LIKE '%DA_CANCELLARE%'")->fetchAll();
+        $delete = $this->pdo->prepare('DELETE FROM tracks WHERE id=?');
+        $removed = 0;
+        foreach ($rows as $row) {
+            $path = (string) $row['file_path'];
+            if (is_file($path)) continue;
             $delete->execute([(int) $row['id']]);
             $removed += $delete->rowCount();
         }

@@ -31,8 +31,8 @@ final class SessionTrackService
             ],
             'stats' => [
                 'tracks' => count($tracks),
-                'available' => count(array_filter($tracks, fn(array $track): bool => (bool)$track['available'])),
-                'unavailable' => count(array_filter($tracks, fn(array $track): bool => !(bool)$track['available'])),
+                'available' => count($tracks),
+                'unavailable' => 0,
             ],
             'tracks' => $tracks,
         ];
@@ -54,23 +54,21 @@ final class SessionTrackService
         $tokens = $this->tokens($query);
         $items = [];
         foreach ($payload['tracks'] as $track) {
-            if (empty($track['public']) || empty($track['requestable']) || empty($track['available'])) continue;
             $score = $this->matchScore($track, $tokens);
             if ($tokens && $score < 1) continue;
             $items[] = [
-                'id' => (int)$track['track_id'],
+                'id' => (int)($track['id'] ?? $track['track_id'] ?? 0),
                 'artist' => (string)$track['artist'],
                 'title' => (string)$track['title'],
                 'genre' => (string)($track['genre'] ?? ''),
                 'year' => isset($track['year']) ? (int)$track['year'] : null,
                 '_score' => $score,
-                '_priority' => (int)($track['priority'] ?? 0),
             ];
         }
-        usort($items, fn(array $left, array $right): int => [$right['_score'], $right['_priority'], $left['artist'], $left['title']] <=> [$left['_score'], $left['_priority'], $right['artist'], $right['title']]);
+        usort($items, fn(array $left, array $right): int => [$right['_score'], $left['artist'], $left['title']] <=> [$left['_score'], $right['artist'], $right['title']]);
         $items = array_slice($items, 0, max(1, min(200, $limit)));
         return array_map(function(array $item): array {
-            unset($item['_score'], $item['_priority']);
+            unset($item['_score']);
             return $item;
         }, $items);
     }
@@ -91,40 +89,30 @@ final class SessionTrackService
     private function exportTracks(string $sessionId): array
     {
         $localFilter = appUsesLocalFiles() ? 'file_exists=1 AND ' : '';
-        $statement = $this->pdo->query("
-            SELECT id,artist,title,normalized_artist,normalized_title,genre,year,bpm,musical_key,camelot,tags,auto_tags,version,rating,play_count,risk
+        $inboxPath = rtrim(canonicalPath((string)setting('spotmate_download_folder', '')), '\\');
+        $inboxFilter = $inboxPath !== '' ? 'AND folder <> :inbox_path AND LEFT(folder, CHAR_LENGTH(:inbox_prefix)) <> :inbox_prefix' : '';
+        $statement = $this->pdo->prepare("
+            SELECT id,artist,title,normalized_artist,normalized_title,genre,year
             FROM tracks
             WHERE {$localFilter}UPPER(file_path) LIKE 'E:%'
+              {$inboxFilter}
               AND TRIM(COALESCE(artist,'')) <> ''
               AND TRIM(COALESCE(title,'')) <> ''
             ORDER BY rating DESC, play_count DESC, artist, title, id
         ");
+        if ($inboxPath !== '') {
+            $statement->execute([':inbox_path'=>$inboxPath, ':inbox_prefix'=>$inboxPath . '\\']);
+        } else {
+            $statement->execute();
+        }
         $tracks = [];
         foreach ($statement->fetchAll() as $row) {
-            $tags = array_values(array_unique(array_merge(trackTags($row), autoTrackTags($row))));
-            $priority = $this->priority($row, $tags);
-            $searchText = $this->searchText($row, $tags);
             $tracks[] = [
-                'track_id' => (int)$row['id'],
+                'id' => (int)$row['id'],
                 'artist' => (string)$row['artist'],
                 'title' => (string)$row['title'],
-                'artist_normalized' => (string)$row['normalized_artist'],
-                'title_normalized' => (string)$row['normalized_title'],
-                'search_text' => $searchText,
                 'genre' => (string)$row['genre'],
-                'macro_genre' => '',
-                'subgenre' => (string)$row['genre'],
                 'year' => $row['year'] === null ? null : (int)$row['year'],
-                'bpm' => $row['bpm'] === null ? null : (float)$row['bpm'],
-                'musical_key' => (string)$row['musical_key'],
-                'camelot' => (string)$row['camelot'],
-                'tags' => $tags,
-                'version' => (string)$row['version'],
-                'priority' => $priority,
-                'available' => true,
-                'public' => true,
-                'requestable' => true,
-                'session' => ['id' => $sessionId, 'bucket' => 'main', 'note' => ''],
             ];
         }
         return $tracks;
@@ -163,7 +151,7 @@ final class SessionTrackService
     private function matchScore(array $track, array $tokens): int
     {
         if (!$tokens) return 1;
-        $haystack = ' ' . (string)$track['search_text'] . ' ';
+        $haystack = ' ' . $this->searchText($track, []) . ' ';
         $score = 0;
         foreach ($tokens as $token) {
             if (str_contains($haystack, $token)) $score++;
@@ -180,9 +168,10 @@ final class SessionTrackService
             throw new RuntimeException('JSON sessione senza tracks.');
         }
         foreach ($payload['tracks'] as $track) {
-            foreach (['track_id', 'artist', 'title', 'search_text', 'priority', 'available', 'public', 'requestable'] as $field) {
+            foreach (['artist', 'title'] as $field) {
                 if (!array_key_exists($field, $track)) throw new RuntimeException('Track sessione senza campo: ' . $field);
             }
+            if (!array_key_exists('id', $track) && !array_key_exists('track_id', $track)) throw new RuntimeException('Track sessione senza campo: id');
             $encoded = json_encode($track, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
             if (is_string($encoded) && preg_match('/[A-Z]:\\\\/i', $encoded)) {
                 throw new RuntimeException('JSON sessione contiene path Windows.');
