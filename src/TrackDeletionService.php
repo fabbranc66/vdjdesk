@@ -56,8 +56,9 @@ final class TrackDeletionService
             if(!@unlink($source)){@unlink($target);throw new RuntimeException('Impossibile completare lo spostamento.');}
         }
         if(!@touch($target))throw new RuntimeException('File spostato, ma data di modifica non aggiornata.');
-        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
-            ->execute([$target,basename($target),dirname($target),(int)filesize($target),$trackId]);
+        $taxonomy=trackTaxonomyFromPath($target);
+        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,archive_area=?,macro_genre=?,folder_genre=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$target,basename($target),dirname($target),$taxonomy['archive_area'],$taxonomy['macro_genre'],$taxonomy['folder_genre'],(int)filesize($target),$trackId]);
         return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];
     }
 
@@ -80,8 +81,9 @@ final class TrackDeletionService
         }
         clearstatcache(true,$target);
         if(!is_file($target)||file_exists($source)||(int)filesize($target)!==$size)throw new RuntimeException('Verifica finale dello spostamento non riuscita.');
-        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
-            ->execute([$target,basename($target),dirname($target),(int)filesize($target),$trackId]);
+        $taxonomy=trackTaxonomyFromPath($target);
+        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,archive_area=?,macro_genre=?,folder_genre=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$target,basename($target),dirname($target),$taxonomy['archive_area'],$taxonomy['macro_genre'],$taxonomy['folder_genre'],(int)filesize($target),$trackId]);
         $this->pdo->prepare("UPDATE deletion_candidates SET status='moved',moved_to_path=?,moved_at=CURRENT_TIMESTAMP,decision_note='Spostato in Da_cancellare dalla Libreria KR Desk',last_seen_at=CURRENT_TIMESTAMP WHERE source_path=?")
             ->execute([$target,$source]);
         return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];

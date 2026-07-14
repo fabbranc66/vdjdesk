@@ -88,7 +88,8 @@ function migrate(PDO $pdo): void
             artist TEXT NOT NULL DEFAULT '', title TEXT NOT NULL DEFAULT '',
             normalized_artist TEXT NOT NULL DEFAULT '', normalized_title TEXT NOT NULL DEFAULT '',
             file_path TEXT NOT NULL UNIQUE, file_name TEXT NOT NULL DEFAULT '', folder TEXT NOT NULL DEFAULT '',
-            genre TEXT NOT NULL DEFAULT '', year INTEGER, bpm REAL, musical_key TEXT NOT NULL DEFAULT '', camelot TEXT NOT NULL DEFAULT '',
+            genre TEXT NOT NULL DEFAULT '', archive_area TEXT NOT NULL DEFAULT '', macro_genre TEXT NOT NULL DEFAULT '', folder_genre TEXT NOT NULL DEFAULT '',
+            year INTEGER, bpm REAL, musical_key TEXT NOT NULL DEFAULT '', camelot TEXT NOT NULL DEFAULT '',
             duration INTEGER, rating INTEGER NOT NULL DEFAULT 0, play_count INTEGER NOT NULL DEFAULT 0,
             last_played TEXT, tags TEXT NOT NULL DEFAULT '[]', version TEXT NOT NULL DEFAULT '',
             album TEXT NOT NULL DEFAULT '', release_date TEXT NOT NULL DEFAULT '',
@@ -104,6 +105,7 @@ function migrate(PDO $pdo): void
         CREATE INDEX IF NOT EXISTS idx_tracks_normalized ON tracks(normalized_artist, normalized_title);
         CREATE INDEX IF NOT EXISTS idx_tracks_bpm ON tracks(bpm);
         CREATE INDEX IF NOT EXISTS idx_tracks_genre ON tracks(genre);
+        CREATE INDEX IF NOT EXISTS idx_tracks_taxonomy ON tracks(archive_area, macro_genre, folder_genre);
         CREATE INDEX IF NOT EXISTS idx_tracks_file_path_nocase ON tracks(file_path COLLATE NOCASE);
         CREATE TABLE IF NOT EXISTS history (
             id INTEGER PRIMARY KEY AUTOINCREMENT, track_id INTEGER NOT NULL,
@@ -197,12 +199,16 @@ function migrate(PDO $pdo): void
         'popularity' => 'INTEGER',
         'metadata_source' => "TEXT NOT NULL DEFAULT ''",
         'metadata_updated_at' => 'TEXT',
+        'archive_area' => "TEXT NOT NULL DEFAULT ''",
+        'macro_genre' => "TEXT NOT NULL DEFAULT ''",
+        'folder_genre' => "TEXT NOT NULL DEFAULT ''",
     ];
     foreach ($trackMetadataColumns as $column => $definition) {
         if (!in_array($column, $trackColumns, true)) {
             $pdo->exec("ALTER TABLE tracks ADD COLUMN $column $definition");
         }
     }
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_tracks_taxonomy ON tracks(archive_area, macro_genre, folder_genre)');
     $candidateColumns = array_column($pdo->query('PRAGMA table_info(deletion_candidates)')->fetchAll(), 'name');
     if (!in_array('approved_at', $candidateColumns, true)) {
         $pdo->exec('ALTER TABLE deletion_candidates ADD COLUMN approved_at TEXT');
@@ -245,10 +251,15 @@ function migrateMariaDb(PDO $pdo): void
         'genre_manual' => 'TINYINT NOT NULL DEFAULT 0',
         'year_manual' => 'TINYINT NOT NULL DEFAULT 0',
         'dj_scores_manual' => 'TINYINT NOT NULL DEFAULT 0',
+        'archive_area' => "VARCHAR(50) NOT NULL DEFAULT ''",
+        'macro_genre' => "VARCHAR(100) NOT NULL DEFAULT ''",
+        'folder_genre' => "VARCHAR(150) NOT NULL DEFAULT ''",
     ];
     foreach ($spotifyColumns as $column => $definition) {
         if (!in_array($column, $columns, true)) $pdo->exec("ALTER TABLE tracks ADD COLUMN $column $definition");
     }
+    $indexes=array_column($pdo->query("SHOW INDEX FROM tracks WHERE Key_name='idx_tracks_taxonomy'")->fetchAll(),'Key_name');
+    if(!$indexes)$pdo->exec('CREATE INDEX idx_tracks_taxonomy ON tracks(archive_area, macro_genre, folder_genre)');
     if (!in_array('dj_scores_manual', $columns, true)) {
         $pdo->exec('UPDATE tracks SET dj_scores_manual=1 WHERE energy<>3 OR singability<>3 OR danceability<>3 OR familiarity<>3 OR risk<>3');
     }
@@ -368,6 +379,36 @@ function canonicalPath(string $path): string
         $path = strtoupper($path[0]) . substr($path, 1);
     }
     return rtrim($path, '\\');
+}
+
+function trackTaxonomyFromPath(string $path): array
+{
+    $path = canonicalPath($path);
+    $parts = explode('\\', $path);
+    $rootIndex = array_search('LIBRERIA_DEFINITIVA', $parts, true);
+    $rootFolder = $rootIndex === false ? '' : (string)($parts[$rootIndex + 1] ?? '');
+    $childFolder = $rootIndex === false ? '' : (string)($parts[$rootIndex + 2] ?? '');
+    $macroMap = [
+        '10_Latin' => 'Latin',
+        '20_Urban' => 'Urban',
+        '30_Commerciale' => 'Commerciale',
+        '40_Rock_PopRock' => 'Rock_PopRock',
+        '50_Italiana' => 'Italiana',
+        '80_Karaoke' => 'Karaoke',
+        '90_Tematiche' => 'Tematiche',
+    ];
+    $areaMap = [
+        '01_INBOX' => 'INBOX',
+        '02_DJ_TOOLS' => 'DJ_TOOLS',
+        'PLAYLIST' => 'PLAYLIST',
+        '80_Karaoke' => 'KARAOKE',
+        '90_Tematiche' => 'TEMATICHE',
+    ];
+    return [
+        'archive_area' => $areaMap[$rootFolder] ?? ($rootFolder !== '' ? 'LIBRERIA' : ''),
+        'macro_genre' => $macroMap[$rootFolder] ?? '',
+        'folder_genre' => $childFolder,
+    ];
 }
 
 function setting(string $key, ?string $fallback = null): ?string

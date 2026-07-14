@@ -3,7 +3,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     artist VARCHAR(500) NOT NULL DEFAULT '', title VARCHAR(700) NOT NULL DEFAULT '',
     normalized_artist VARCHAR(500) NOT NULL DEFAULT '', normalized_title VARCHAR(700) NOT NULL DEFAULT '',
     file_path VARCHAR(700) NOT NULL, file_name VARCHAR(500) NOT NULL DEFAULT '', folder VARCHAR(700) NOT NULL DEFAULT '',
-    genre VARCHAR(500) NOT NULL DEFAULT '', genre_manual TINYINT NOT NULL DEFAULT 0, year SMALLINT NULL, year_manual TINYINT NOT NULL DEFAULT 0, bpm DECIMAL(8,3) NULL,
+    genre VARCHAR(500) NOT NULL DEFAULT '', archive_area VARCHAR(50) NOT NULL DEFAULT '', macro_genre VARCHAR(100) NOT NULL DEFAULT '', folder_genre VARCHAR(150) NOT NULL DEFAULT '',
+    genre_manual TINYINT NOT NULL DEFAULT 0, year SMALLINT NULL, year_manual TINYINT NOT NULL DEFAULT 0, bpm DECIMAL(8,3) NULL,
     musical_key VARCHAR(30) NOT NULL DEFAULT '', camelot VARCHAR(10) NOT NULL DEFAULT '', duration INT NULL,
     rating INT NOT NULL DEFAULT 0, play_count INT NOT NULL DEFAULT 0, last_played DATETIME NULL,
     tags LONGTEXT NOT NULL, auto_tags LONGTEXT NULL, auto_tag_overrides LONGTEXT NULL, version VARCHAR(100) NOT NULL DEFAULT '', album VARCHAR(700) NOT NULL DEFAULT '',
@@ -23,7 +24,8 @@ CREATE TABLE IF NOT EXISTS tracks (
     file_exists TINYINT NOT NULL DEFAULT 1, source VARCHAR(50) NOT NULL DEFAULT 'manual',
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uq_tracks_file_path (file_path),
-    KEY idx_tracks_normalized (normalized_artist, normalized_title(191)), KEY idx_tracks_bpm (bpm), KEY idx_tracks_genre (genre(191))
+    KEY idx_tracks_normalized (normalized_artist, normalized_title(191)), KEY idx_tracks_bpm (bpm), KEY idx_tracks_genre (genre(191)),
+    KEY idx_tracks_taxonomy (archive_area, macro_genre, folder_genre)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS history (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, track_id BIGINT UNSIGNED NOT NULL,

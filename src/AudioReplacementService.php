@@ -152,8 +152,9 @@ final class AudioReplacementService
 
         try {
             $audio = $this->inspectAudio($target);
-            $statement = $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,file_size=?,bitrate=COALESCE(?,bitrate),duration=COALESCE(?,duration),file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?");
-            $statement->execute([$target, basename($target), dirname($target), (int)filesize($target), $audio['bitrate'], $audio['duration'], $trackId]);
+            $taxonomy = trackTaxonomyFromPath($target);
+            $statement = $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,archive_area=?,macro_genre=?,folder_genre=?,file_size=?,bitrate=COALESCE(?,bitrate),duration=COALESCE(?,duration),file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?");
+            $statement->execute([$target, basename($target), dirname($target), $taxonomy['archive_area'], $taxonomy['macro_genre'], $taxonomy['folder_genre'], (int)filesize($target), $audio['bitrate'], $audio['duration'], $trackId]);
             $this->clear();
         } catch (Throwable $error) {
             @rename($target, $download);

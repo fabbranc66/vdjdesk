@@ -173,6 +173,9 @@ try {
         $track = $library->find((int) ($_GET['id'] ?? 0));
         $track ? jsonResponse($track) : jsonResponse(['error'=>'Brano non trovato'], 404);
     }
+    if ($action === 'taxonomy-refresh' && $method === 'POST') jsonResponse($library->refreshPathTaxonomy());
+    if ($action === 'taxonomy-report') jsonResponse($library->taxonomyReport());
+    if ($action === 'taxonomy-options') jsonResponse($library->taxonomyOptions());
     if ($action === 'playlists') jsonResponse(['root'=>(new PlaylistService())->root(),'items'=>(new PlaylistService())->playlists()]);
     if ($action === 'playlist-create' && $method === 'POST') jsonResponse((new PlaylistService())->create((string)($data['name']??'')));
     if ($action === 'playlist-detail') jsonResponse((new PlaylistService())->detail((string)($_GET['file']??'')));
@@ -708,6 +711,9 @@ function apiStudioLocalActions(): array
         'tracks',
         'track',
         'track-update',
+        'taxonomy-refresh',
+        'taxonomy-report',
+        'taxonomy-options',
         'studio-issues',
         'inbox-status',
         'playlists',

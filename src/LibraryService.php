@@ -59,6 +59,13 @@ final class LibraryService
         }
         $artistFilter = trim((string) ($filters['artist'] ?? ''));
         $titleFilter = trim((string) ($filters['title'] ?? ''));
+        foreach (['archive_area','macro_genre','folder_genre'] as $taxonomyFilter) {
+            $value = trim((string)($filters[$taxonomyFilter] ?? ''));
+            if ($value !== '') {
+                $where[] = $taxonomyFilter . ' = :' . $taxonomyFilter;
+                $params[':' . $taxonomyFilter] = $value;
+            }
+        }
         if ($artistFilter !== '' || $titleFilter !== '') {
             if ($artistFilter !== '') {
                 $where[] = 'normalized_artist = :artist_norm';
@@ -222,10 +229,11 @@ final class LibraryService
         $databasePath ??= $path;
         $syncToken ??= bin2hex(random_bytes(8));
         $upsert = $this->pdo->prepare(<<<'SQL'
-            INSERT INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,genre,year,bpm,musical_key,camelot,duration,rating,play_count,last_played,tags,version,energy,singability,danceability,familiarity,risk,bitrate,file_size,file_exists,source,updated_at)
-            VALUES(:artist,:title,:normalized_artist,:normalized_title,:file_path,:file_name,:folder,:genre,:year,:bpm,:musical_key,:camelot,:duration,:rating,:play_count,:last_played,:tags,:version,3,3,3,3,3,:bitrate,:file_size,:file_exists,'virtualdj',CURRENT_TIMESTAMP)
+            INSERT INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,genre,archive_area,macro_genre,folder_genre,year,bpm,musical_key,camelot,duration,rating,play_count,last_played,tags,version,energy,singability,danceability,familiarity,risk,bitrate,file_size,file_exists,source,updated_at)
+            VALUES(:artist,:title,:normalized_artist,:normalized_title,:file_path,:file_name,:folder,:genre,:archive_area,:macro_genre,:folder_genre,:year,:bpm,:musical_key,:camelot,:duration,:rating,:play_count,:last_played,:tags,:version,3,3,3,3,3,:bitrate,:file_size,:file_exists,'virtualdj',CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE artist=VALUES(artist),title=VALUES(title),normalized_artist=VALUES(normalized_artist),normalized_title=VALUES(normalized_title),
                 genre=CASE WHEN tracks.genre_manual=1 THEN tracks.genre WHEN tracks.metadata_source='sortlee' AND tracks.genre<>'' THEN tracks.genre WHEN VALUES(genre)<>'' THEN VALUES(genre) ELSE tracks.genre END,
+                archive_area=VALUES(archive_area),macro_genre=VALUES(macro_genre),folder_genre=VALUES(folder_genre),
                 year=CASE WHEN tracks.year_manual=1 THEN tracks.year WHEN tracks.release_date REGEXP '^[0-9]{4}' THEN CAST(SUBSTRING(tracks.release_date,1,4) AS UNSIGNED) ELSE COALESCE(VALUES(year),tracks.year) END,
                 bpm=CASE WHEN tracks.metadata_source='sortlee' AND tracks.bpm IS NOT NULL THEN tracks.bpm ELSE COALESCE(VALUES(bpm),tracks.bpm) END,
                 musical_key=CASE WHEN tracks.metadata_source='sortlee' AND tracks.musical_key<>'' THEN tracks.musical_key WHEN VALUES(musical_key)<>'' THEN VALUES(musical_key) ELSE tracks.musical_key END,
@@ -261,10 +269,13 @@ final class LibraryService
             $duration = (int) round((float) ($infos['SongLength'] ?? 0)) ?: null;
             $normalizedArtist = normalizeText($artist);
             $normalizedTitle = normalizeTitle($title);
-            $relinked += $this->relinkMovedVirtualDjTrack($filePath, $fileName, dirname($filePath), $normalizedArtist, $normalizedTitle, $duration);
+            $folder = dirname($filePath);
+            $taxonomy = trackTaxonomyFromPath($filePath);
+            $relinked += $this->relinkMovedVirtualDjTrack($filePath, $fileName, $folder, $normalizedArtist, $normalizedTitle, $duration);
             $upsert->execute([
                 ':artist'=>$artist, ':title'=>$title, ':normalized_artist'=>$normalizedArtist, ':normalized_title'=>$normalizedTitle,
-                ':file_path'=>$filePath, ':file_name'=>$fileName, ':folder'=>dirname($filePath), ':genre'=>(string) ($tags['Genre'] ?? ''),
+                ':file_path'=>$filePath, ':file_name'=>$fileName, ':folder'=>$folder, ':genre'=>(string) ($tags['Genre'] ?? ''),
+                ':archive_area'=>$taxonomy['archive_area'], ':macro_genre'=>$taxonomy['macro_genre'], ':folder_genre'=>$taxonomy['folder_genre'],
                 ':year'=>(int) ($tags['Year'] ?? 0) ?: null, ':bpm'=>$bpm, ':musical_key'=>$key, ':camelot'=>$this->toCamelot($key),
                 ':duration'=>$duration, ':rating'=>(int) ($tags['Stars'] ?? 0),
                 ':play_count'=>(int) ($infos['PlayCount'] ?? 0), ':last_played'=>$lastPlay ? date('Y-m-d H:i:s', $lastPlay) : null,
@@ -562,12 +573,13 @@ final class LibraryService
         }));
         if (count($candidates) !== 1) return 0;
 
+        $taxonomy = trackTaxonomyFromPath($filePath);
         $update = $this->pdo->prepare(<<<'SQL'
             UPDATE tracks
-            SET file_path = ?, file_name = ?, folder = ?, file_exists = ?, source = 'virtualdj', updated_at = CURRENT_TIMESTAMP
+            SET file_path = ?, file_name = ?, folder = ?, archive_area = ?, macro_genre = ?, folder_genre = ?, file_exists = ?, source = 'virtualdj', updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
         SQL);
-        $update->execute([$filePath, $fileName, $folder, $this->isLocalFile($filePath) ? 1 : 0, (int)$candidates[0]['id']]);
+        $update->execute([$filePath, $fileName, $folder, $taxonomy['archive_area'], $taxonomy['macro_genre'], $taxonomy['folder_genre'], $this->isLocalFile($filePath) ? 1 : 0, (int)$candidates[0]['id']]);
         return $update->rowCount() > 0 ? 1 : 0;
     }
 
@@ -668,13 +680,69 @@ final class LibraryService
         return ['scanned' => $found, 'source' => $root];
     }
 
+    public function refreshPathTaxonomy(): array
+    {
+        $rows = $this->pdo->query("SELECT id,file_path,archive_area,macro_genre,folder_genre FROM tracks WHERE UPPER(file_path) LIKE 'E:%'")->fetchAll();
+        $update = $this->pdo->prepare('UPDATE tracks SET archive_area=?, macro_genre=?, folder_genre=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+        $updated = 0;
+        foreach ($rows as $row) {
+            $taxonomy = trackTaxonomyFromPath((string)$row['file_path']);
+            if ($taxonomy['archive_area'] === (string)($row['archive_area'] ?? '') && $taxonomy['macro_genre'] === (string)($row['macro_genre'] ?? '') && $taxonomy['folder_genre'] === (string)($row['folder_genre'] ?? '')) continue;
+            $update->execute([$taxonomy['archive_area'], $taxonomy['macro_genre'], $taxonomy['folder_genre'], (int)$row['id']]);
+            $updated += $update->rowCount();
+        }
+        return ['scanned'=>count($rows), 'updated'=>$updated];
+    }
+
+    public function taxonomyReport(): array
+    {
+        $summary = $this->pdo->query("
+            SELECT archive_area,macro_genre,folder_genre,genre micro_genre,COUNT(*) tracks
+            FROM tracks
+            WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%'
+            GROUP BY archive_area,macro_genre,folder_genre,genre
+            ORDER BY archive_area,macro_genre,folder_genre,tracks DESC,micro_genre
+        ")->fetchAll();
+        return ['items'=>$summary, 'total'=>count($summary)];
+    }
+
+    public function taxonomyOptions(): array
+    {
+        $rows = $this->pdo->query("
+            SELECT archive_area,macro_genre,folder_genre,COUNT(*) tracks
+            FROM tracks
+            WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%'
+            GROUP BY archive_area,macro_genre,folder_genre
+            ORDER BY archive_area,macro_genre,folder_genre
+        ")->fetchAll();
+        $macros = [];
+        $folders = [];
+        foreach ($rows as $row) {
+            $macro = (string)($row['macro_genre'] ?? '');
+            $folder = (string)($row['folder_genre'] ?? '');
+            if ($macro !== '') $macros[$macro] = ($macros[$macro] ?? 0) + (int)$row['tracks'];
+            if ($folder !== '') $folders[] = [
+                'archive_area' => (string)($row['archive_area'] ?? ''),
+                'macro_genre' => $macro,
+                'folder_genre' => $folder,
+                'tracks' => (int)$row['tracks'],
+            ];
+        }
+        ksort($macros, SORT_NATURAL | SORT_FLAG_CASE);
+        return [
+            'macros' => array_map(fn(string $name, int $tracks): array => ['name'=>$name,'tracks'=>$tracks], array_keys($macros), array_values($macros)),
+            'folders' => $folders,
+        ];
+    }
+
     private function addFile(string $path): bool
     {
         if (!is_file($path)) return false;
         $fileName = basename($path);
         $parsed = $this->artistTitleFromFilename($fileName);
-        $statement = $this->pdo->prepare('INSERT IGNORE INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,file_size,file_exists,source,version,tags) VALUES(?,?,?,?,?,?,?,?,1,?,?,\'[]\')');
-        $statement->execute([$parsed['artist'],$parsed['title'],normalizeText($parsed['artist']),normalizeTitle($parsed['title']),$path,$fileName,dirname($path),filesize($path),'scan',$this->detectVersion($fileName)]);
+        $taxonomy = trackTaxonomyFromPath($path);
+        $statement = $this->pdo->prepare('INSERT IGNORE INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,archive_area,macro_genre,folder_genre,file_size,file_exists,source,version,tags) VALUES(?,?,?,?,?,?,?,?,?,?,?,1,?,?,\'[]\')');
+        $statement->execute([$parsed['artist'],$parsed['title'],normalizeText($parsed['artist']),normalizeTitle($parsed['title']),$path,$fileName,dirname($path),$taxonomy['archive_area'],$taxonomy['macro_genre'],$taxonomy['folder_genre'],filesize($path),'scan',$this->detectVersion($fileName)]);
         return $statement->rowCount() > 0;
     }
 
