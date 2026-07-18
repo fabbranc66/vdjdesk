@@ -111,22 +111,22 @@ final class PlaylistService
     public function candidates(string $relative,array $filters): array
     {
         $existing=$this->detail($relative)['items'];$paths=array_values(array_filter(array_map(fn(array $track): string=>(string)($track['file_path']??''),$existing)));$existingFingerprints=[];foreach($existing as $track){$fingerprint=normalizeText((string)($track['artist']??'')).'|'.normalizeTitle((string)($track['title']??''));if($fingerprint!=='|')$existingFingerprints[$fingerprint]=true;}
-        $where=['file_exists=1',"UPPER(file_path) LIKE 'E:%'"];$params=[];$audio="LOWER(SUBSTRING_INDEX(file_name,'.',-1)) IN ('mp3','m4a','aac','ogg','opus','wma','flac','wav','aiff','aif','alac')";$where[]=$audio;
+        $where=['file_exists=1',definitiveMusicSqlCondition()];$params=[];$audio="LOWER(SUBSTRING_INDEX(file_name,'.',-1)) IN ('mp3','m4a','aac','ogg','opus','wma','flac','wav','aiff','aif','alac')";$where[]=$audio;
         if($paths){$marks=implode(',',array_fill(0,count($paths),'?'));$where[]="file_path NOT IN ($marks)";$params=array_merge($params,$paths);}
-        foreach(['macro_genre','folder_genre'] as $taxonomyFilter){$value=trim((string)($filters[$taxonomyFilter]??''));if($value!==''){$where[]=$taxonomyFilter.'=?';$params[]=$value;}}
-        $genres=array_values(array_filter(array_map(fn($genre)=>trim((string)$genre),(array)($filters['genre']??[])),fn(string $genre): bool=>$genre!==''));if($genres){$where[]='LOWER(TRIM(genre)) IN ('.implode(',',array_fill(0,count($genres),'?')).')';foreach($genres as $genre)$params[]=mb_strtolower($genre,'UTF-8');}
-        $tags=array_values(array_filter(array_map(fn($tag)=>trim((string)$tag),(array)($filters['tag']??[])),fn(string $tag): bool=>$tag!==''));if($tags){$parts=[];foreach($tags as $tag){$parts[]="CONCAT(COALESCE(tags,''),' ',COALESCE(auto_tags,'')) LIKE ?";$params[]='%'.$tag.'%';}$where[]='('.implode(' OR ',$parts).')';}
+        foreach(['macro_genre','folder_genre'] as $taxonomyFilter){$values=$this->filterValues($filters,$taxonomyFilter);if($values){$where[]=$taxonomyFilter.' IN ('.implode(',',array_fill(0,count($values),'?')).')';$params=array_merge($params,$values);}}
+        $genres=$this->filterValues($filters,'genre');if($genres){$where[]='LOWER(TRIM(genre)) IN ('.implode(',',array_fill(0,count($genres),'?')).')';foreach($genres as $genre)$params[]=mb_strtolower($genre,'UTF-8');}
+        $tags=$this->filterValues($filters,'tag');if($tags){$parts=[];foreach($tags as $tag){$parts[]="CONCAT(COALESCE(tags,''),' ',COALESCE(auto_tags,'')) LIKE ?";$params[]='%'.$tag.'%';}$where[]='('.implode(' OR ',$parts).')';}
         foreach(['bpm_min'=>['bpm','>='],'bpm_max'=>['bpm','<='],'year_min'=>['year','>='],'year_max'=>['year','<=']] as $key=>[$field,$operator])if(($filters[$key]??'')!==''){$where[]="$field $operator ?";$params[]=(float)$filters[$key];}
         $includeUnknownSpotify=!empty($filters['include_unknown_spotify'])||!empty($filters['include_unknown_popularity']);
-        if(($filters['energy_min']??'')!==''){$where[]=$includeUnknownSpotify?'(energy>=? OR spotify_energy IS NULL)':'energy>=?';$params[]=(int)$filters['energy_min'];}
-        if(($filters['dance_min']??'')!==''){$where[]=$includeUnknownSpotify?'(danceability>=? OR spotify_danceability IS NULL)':'danceability>=?';$params[]=(int)$filters['dance_min'];}
-        if(($filters['popularity_min']??'')!==''){$where[]=$includeUnknownSpotify?'(popularity>=? OR popularity IS NULL)':'popularity>=?';$params[]=(int)$filters['popularity_min'];}
-        $camelot=strtoupper(trim((string)($filters['camelot']??'')));if(preg_match('/^(1[0-2]|[1-9])([AB])$/',$camelot,$match)){$keys=$this->compatibleCamelot((int)$match[1],$match[2]);$where[]='UPPER(camelot) IN ('.implode(',',array_fill(0,count($keys),'?')).')';$params=array_merge($params,$keys);}
+        $energyMin=$this->minimumNumericFilter($filters,'energy_min');if($energyMin!==null){$where[]=$includeUnknownSpotify?'(energy>=? OR spotify_energy IS NULL)':'energy>=?';$params[]=$energyMin;}
+        $danceMin=$this->minimumNumericFilter($filters,'dance_min');if($danceMin!==null){$where[]=$includeUnknownSpotify?'(danceability>=? OR spotify_danceability IS NULL)':'danceability>=?';$params[]=$danceMin;}
+        $popularityMin=$this->minimumNumericFilter($filters,'popularity_min');if($popularityMin!==null){$where[]=$includeUnknownSpotify?'(popularity>=? OR popularity IS NULL)':'popularity>=?';$params[]=$popularityMin;}
+        $camelotValues=$this->filterValues($filters,'camelot');$camelotKeys=[];foreach($camelotValues as $camelot){$camelot=strtoupper(trim((string)$camelot));if(preg_match('/^(1[0-2]|[1-9])([AB])$/',$camelot,$match))$camelotKeys=array_merge($camelotKeys,$this->compatibleCamelot((int)$match[1],$match[2]));}$camelotKeys=array_values(array_unique($camelotKeys));if($camelotKeys){$where[]='UPPER(camelot) IN ('.implode(',',array_fill(0,count($camelotKeys),'?')).')';$params=array_merge($params,$camelotKeys);}
         if(!empty($filters['mp3_320']))$where[]="((LOWER(SUBSTRING_INDEX(file_name,'.',-1))='mp3' AND COALESCE(bitrate,0)>=320) OR LOWER(SUBSTRING_INDEX(file_name,'.',-1)) IN ('flac','wav','aiff','aif','alac'))";
-        $desired=max(1,(int)($filters['desired']??$filters['limit']??10));$score="COALESCE(popularity,40)*0.35+COALESCE(energy,3)*8+COALESCE(danceability,3)*8+COALESCE(familiarity,3)*6+LEAST(COALESCE(bitrate,0),320)/32";
+        $desired=max(1,(int)($filters['desired']??$filters['limit']??10));$score="COALESCE(popularity,40)*0.35+COALESCE(energy,3)*8+COALESCE(danceability,3)*8+COALESCE(familiarity,3)*6";
         $countStatement=db()->prepare('SELECT COUNT(*) FROM tracks WHERE '.implode(' AND ',$where));$countStatement->execute($params);$totalAvailable=(int)$countStatement->fetchColumn();
         $statement=db()->prepare("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked,$score AS candidate_score FROM tracks WHERE ".implode(' AND ',$where)." ORDER BY candidate_score DESC,popularity IS NULL,popularity DESC,TRIM(COALESCE(genre,''))='',LOWER(TRIM(genre)),artist,title");$statement->execute($params);$library=new LibraryService(db());$items=[];
-        $seen=$existingFingerprints;foreach($statement->fetchAll() as $row){$fingerprint=(string)$row['normalized_artist'].'|'.(string)$row['normalized_title'];if($fingerprint!=='|'&&isset($seen[$fingerprint]))continue;if($fingerprint!=='|')$seen[$fingerprint]=true;$candidateScore=$row['candidate_score'];unset($row['candidate_score']);$track=$library->hydrateTrack($row);$reasons=[];if(!empty($filters['macro_genre']))$reasons[]='macro '.(string)$track['macro_genre'];if(!empty($filters['folder_genre']))$reasons[]='cartella '.(string)$track['folder_genre'];if($genres)$reasons[]='microgenere '.(string)$track['genre'];if($tags)$reasons[]='tag compatibile';if($camelot!=='')$reasons[]='Camelot compatibile';if(!empty($filters['mp3_320']))$reasons[]='qualità alta '.$track['bitrate'].' kbps';if($track['popularity']!==null)$reasons[]='popolarità '.$track['popularity'];$track['candidate_score']=(int)round((float)$candidateScore);$track['candidate_reason']=implode(' · ',$reasons)?:'miglior punteggio complessivo';$items[]=$track;}
+        $seen=$existingFingerprints;foreach($statement->fetchAll() as $row){$fingerprint=(string)$row['normalized_artist'].'|'.(string)$row['normalized_title'];if($fingerprint!=='|'&&isset($seen[$fingerprint]))continue;if($fingerprint!=='|')$seen[$fingerprint]=true;$candidateScore=$row['candidate_score'];unset($row['candidate_score']);$track=$library->hydrateTrack($row);$reasons=[];if(!empty($filters['macro_genre']))$reasons[]='macro '.(string)$track['macro_genre'];if(!empty($filters['folder_genre']))$reasons[]='cartella '.(string)$track['folder_genre'];if($genres)$reasons[]='microgenere '.(string)$track['genre'];if($tags)$reasons[]='tag compatibile';if($camelotKeys)$reasons[]='Camelot compatibile';if(!empty($filters['mp3_320']))$reasons[]='qualità alta '.$track['bitrate'].' kbps';if($track['popularity']!==null)$reasons[]='popolarità '.$track['popularity'];$track['candidate_score']=(int)round((float)$candidateScore);$track['candidate_reason']=implode(' · ',$reasons)?:'miglior punteggio complessivo';$items[]=$track;}
         return ['items'=>$items,'desired'=>$desired,'total_available'=>count($items),'excluded_existing'=>count($paths),'duplicates_removed'=>$totalAvailable-count($items),'criteria'=>$filters];
     }
 
@@ -134,7 +134,7 @@ final class PlaylistService
     {
         $library=new LibraryService(db());
         $bySpotify=[];$byIsrc=[];$byFingerprint=[];$byTitle=[];
-        $rows=db()->query("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:\\\\\\\\LIBRERIA_DEFINITIVA\\\\\\\\%'")->fetchAll();
+        $rows=db()->query("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE file_exists=1 AND " . definitiveMusicSqlCondition())->fetchAll();
         foreach($rows as $row){
             $track=$library->hydrateTrack($row);$spotify=trim((string)($track['spotify_id']??''));$isrc=strtoupper(trim((string)($track['isrc']??'')));
             $fingerprint=(string)$row['normalized_artist'].'|'.(string)$row['normalized_title'];$title=(string)$row['normalized_title'];
@@ -154,15 +154,42 @@ final class PlaylistService
             $weak=[];$weakReason='';
             if($entry['normalized_title']!==''&&!empty($byTitle[$entry['normalized_title']])){$weak=$byTitle[$entry['normalized_title']];$weakReason='Titolo uguale, artista diverso o incompleto';}
             if($weak){$entry['status']='doubtful';$entry['reason']=$weakReason;$entry['matches']=array_slice($weak,0,5);$doubtful[]=$entry;continue;}
-            $entry['status']='missing';$entry['reason']='Non trovato nella libreria definitiva';$entry['matches']=[];$missing[]=$entry;
+            $entry['status']='missing';$entry['reason']='Non trovato nella libreria musicale';$entry['matches']=[];$missing[]=$entry;
         }
         return ['total'=>count($present)+count($missing)+count($doubtful),'present'=>count($present),'missing'=>count($missing),'doubtful'=>count($doubtful),'items'=>['present'=>$present,'missing'=>$missing,'doubtful'=>$doubtful]];
+    }
+
+    public function createFromExternal(string $name,array $items): array
+    {
+        if(!$items)throw new RuntimeException('JSON importato vuoto.');
+        $comparison=$this->compareExternalSpotifyList($items);
+        $present=$comparison['items']['present']??[];
+        usort($present,fn(array $left,array $right): int=>(int)($left['position']??0)<=>(int)($right['position']??0));
+        $paths=[];$seen=[];
+        foreach($present as $entry){
+            $path=canonicalPath((string)($entry['matches'][0]['file_path']??''));
+            $key=strtoupper($path);
+            if($path===''||!is_file($path)||isset($seen[$key]))continue;
+            $seen[$key]=true;$paths[]=$path;
+        }
+        if(!$paths)throw new RuntimeException('Nessun brano sicuro del JSON e presente nella libreria.');
+        $playlist=$this->create($name);
+        try{$saved=$this->saveOrder((string)$playlist['relative'],$paths);}
+        catch(Throwable $error){@unlink((string)$playlist['path']);throw $error;}
+        return $saved+[
+            'relative'=>$playlist['relative'],
+            'file'=>$playlist['file'],
+            'present'=>(int)$comparison['present'],
+            'missing'=>(int)$comparison['missing'],
+            'doubtful'=>(int)$comparison['doubtful'],
+            'duplicates_skipped'=>(int)$comparison['present']-count($paths),
+        ];
     }
 
     public function matchExternalListToFolder(array $items,string $folder): array
     {
         $folder=canonicalPath($folder);if($folder===''||!is_dir($folder))throw new RuntimeException('Cartella non valida.');
-        $prefix=strtolower(rtrim($folder,'\\').'\\');$statement=db()->prepare("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND (folder=? OR LOWER(file_path) LIKE ?) ORDER BY file_path");
+        $prefix=strtolower(rtrim($folder,'\\').'\\');$statement=db()->prepare("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE file_exists=1 AND " . definitiveMusicSqlCondition() . " AND (folder=? OR LOWER(file_path) LIKE ?) ORDER BY file_path");
         $statement->execute([$folder,$prefix.'%']);$library=new LibraryService(db());$tracks=array_map(fn(array $row): array=>$library->hydrateTrack($row),$statement->fetchAll());
         $bySpotify=[];$byIsrc=[];$byFingerprint=[];$byTitle=[];foreach($tracks as $track){$spotify=trim((string)($track['spotify_id']??''));$isrc=strtoupper(trim((string)($track['isrc']??'')));$fingerprint=normalizeText((string)$track['artist']).'|'.normalizeTitle((string)$track['title']);$title=normalizeTitle((string)$track['title']);if($spotify!=='')$bySpotify[$spotify][]=$track;if($isrc!=='')$byIsrc[$isrc][]=$track;if($fingerprint!=='|')$byFingerprint[$fingerprint][]=$track;if($title!=='')$byTitle[$title][]=$track;}
         $safe=[];$doubtful=[];$unmatched=[];$seen=[];
@@ -196,6 +223,24 @@ final class PlaylistService
     {
         $ranked=[];foreach($candidates as $track){$durationDiff=null;$durationOk=true;if((int)$entry['duration']>0&&(int)($track['duration']??0)>0){$durationDiff=abs((int)$entry['duration']-(int)$track['duration']);$durationOk=$durationDiff<=8;}$existingSpotify=trim((string)($track['spotify_id']??''));$spotifyConflict=$existingSpotify!==''&&$entry['spotify_id']!==''&&$existingSpotify!==$entry['spotify_id'];$confidence=95;if($durationDiff!==null)$confidence-=$durationOk?0:min(30,$durationDiff*3);if($spotifyConflict)$confidence-=60;if(count($candidates)>1)$confidence-=10;$safe=$confidence>=85&&$durationOk&&!$spotifyConflict&&count($candidates)===1;$reason=$baseReason.($durationDiff!==null?' · durata Δ'.$durationDiff.'s':'').($spotifyConflict?' · Spotify ID diverso già presente':'').(count($candidates)>1?' · match multiplo':'');$ranked[]=['track'=>$track,'confidence'=>$confidence,'safe'=>$safe,'duration_diff'=>$durationDiff,'reason'=>$reason];}
         usort($ranked,fn(array $a,array $b)=>$b['confidence']<=>$a['confidence']);return $ranked;
+    }
+
+    private function filterValues(array $filters,string $key): array
+    {
+        $raw=$filters[$key]??[];
+        $items=is_array($raw)?$raw:explode(',',(string)$raw);
+        $values=[];
+        foreach($items as $item){
+            $value=trim((string)$item);
+            if($value!=='')$values[$value]=$value;
+        }
+        return array_values($values);
+    }
+
+    private function minimumNumericFilter(array $filters,string $key): ?int
+    {
+        $values=array_values(array_filter(array_map(fn(string $value): int=>(int)$value,$this->filterValues($filters,$key)),fn(int $value): bool=>$value>0));
+        return $values?min($values):null;
     }
 
     private function pdo(): PDO { return db(); }
@@ -258,7 +303,7 @@ final class PlaylistService
             $xml=@simplexml_load_file($path);if($xml){$position=0;foreach($xml->xpath('//song')?:[] as $song){$songPath=html_entity_decode((string)($song['path']??''),ENT_QUOTES|ENT_XML1,'UTF-8');if($songPath==='')continue;$title=html_entity_decode((string)($song['title']??''),ENT_QUOTES|ENT_XML1,'UTF-8');$remix=html_entity_decode((string)($song['remix']??''),ENT_QUOTES|ENT_XML1,'UTF-8');if($title!==''&&$remix!=='')$title.=' ('.$remix.')';$idx=(string)($song['idx']??'');$entries[]=['path'=>$songPath,'artist'=>html_entity_decode((string)($song['artist']??''),ENT_QUOTES|ENT_XML1,'UTF-8'),'title'=>$title,'_idx'=>$idx!==''?(int)$idx:null,'_pos'=>$position++];}usort($entries,fn(array $a,array $b): int=>($a['_idx']??$a['_pos'])<=>($b['_idx']??$b['_pos']) ?: ($a['_pos']<=>$b['_pos']));}
         }else foreach(file($path,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES)?:[] as $line){$line=trim(str_replace("\xEF\xBB\xBF",'',trim($line)));if($line!==''&&!str_starts_with($line,'#')&&!str_contains(strtoupper($line),'#EXTVDJ:'))$entries[]=['path'=>$line,'artist'=>'','title'=>''];}
         $metadata=db()->prepare('SELECT id FROM tracks WHERE file_path=? ORDER BY file_exists DESC LIMIT 1');$library=new LibraryService(db());
-        $items=[];foreach($entries as $entry){$trackPath=str_replace('/','\\',(string)$entry['path']);if(!preg_match('/^[A-Za-z]:\\\\/',$trackPath)){$relative=$trackPath;$desktop=(string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Desktop';$candidates=[canonicalPath(dirname($path).'\\'.$relative),canonicalPath($desktop.'\\'.$relative),canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\'.$relative)];$existing=array_values(array_filter($candidates,'is_file'));$trackPath=$existing[0]??$candidates[1];}$exists=is_file($trackPath);$metadata->execute([$trackPath]);$id=(int)($metadata->fetchColumn()?:0);$track=$id?$library->find($id):null;if(!$track){$fallbackArtist=trim((string)$entry['artist']);$fallbackTitle=trim((string)$entry['title']);if($fallbackTitle===''||$fallbackArtist===''){$base=pathinfo($trackPath,PATHINFO_FILENAME);if(str_contains($base,' - ')){[$left,$right]=array_map('trim',explode(' - ',$base,2));if($fallbackArtist==='')$fallbackArtist=$left;if($fallbackTitle==='')$fallbackTitle=$right;}elseif($fallbackTitle==='')$fallbackTitle=$base;}$track=['id'=>0,'artist'=>$fallbackArtist,'title'=>$fallbackTitle,'file_path'=>$trackPath,'file_name'=>basename($trackPath),'folder'=>dirname($trackPath),'bpm'=>null,'camelot'=>'','musical_key'=>'','duration'=>null,'genre'=>'','year'=>null,'bitrate'=>null,'tags'=>[],'version'=>'','spotify_mode'=>null];}$items[]=array_merge($track,['_playlist_exists'=>$exists,'_playlist_definitive'=>$exists&&str_starts_with(strtoupper($trackPath),'E:\\LIBRERIA_DEFINITIVA\\'),'_playlist_path'=>$trackPath]);}
+        $musicRootPrefix=strtoupper(definitiveMusicRoot().'\\');$items=[];foreach($entries as $entry){$trackPath=str_replace('/','\\',(string)$entry['path']);if(!preg_match('/^[A-Za-z]:\\\\/',$trackPath)){$relative=$trackPath;$desktop=(string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Desktop';$candidates=[canonicalPath(dirname($path).'\\'.$relative),canonicalPath($desktop.'\\'.$relative),canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\'.$relative)];$existing=array_values(array_filter($candidates,'is_file'));$trackPath=$existing[0]??$candidates[1];}$exists=is_file($trackPath);$metadata->execute([$trackPath]);$id=(int)($metadata->fetchColumn()?:0);$track=$id?$library->find($id):null;if(!$track){$fallbackArtist=trim((string)$entry['artist']);$fallbackTitle=trim((string)$entry['title']);if($fallbackTitle===''||$fallbackArtist===''){$base=pathinfo($trackPath,PATHINFO_FILENAME);if(str_contains($base,' - ')){[$left,$right]=array_map('trim',explode(' - ',$base,2));if($fallbackArtist==='')$fallbackArtist=$left;if($fallbackTitle==='')$fallbackTitle=$right;}elseif($fallbackTitle==='')$fallbackTitle=$base;}$track=['id'=>0,'artist'=>$fallbackArtist,'title'=>$fallbackTitle,'file_path'=>$trackPath,'file_name'=>basename($trackPath),'folder'=>dirname($trackPath),'bpm'=>null,'camelot'=>'','musical_key'=>'','duration'=>null,'genre'=>'','year'=>null,'bitrate'=>null,'tags'=>[],'version'=>'','spotify_mode'=>null];}$items[]=array_merge($track,['_playlist_exists'=>$exists,'_playlist_definitive'=>$exists&&str_starts_with(strtoupper(canonicalPath($trackPath)),$musicRootPrefix),'_playlist_path'=>$trackPath]);}
         return $items;
     }
 

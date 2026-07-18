@@ -6,7 +6,7 @@ final class EDuplicateService
     private const ROOT = 'E:\\';
     private const AUDIO_EXTENSIONS = ['mp3','m4a','flac','wav','ogg','opus','aac','mp4','mkv','vob'];
     private const EXCLUDED_ROOTS = ['$RECYCLE.BIN','System Volume Information','VirtualDJ'];
-    private const DELETION_FOLDER = 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Da_cancellare';
+    private const DELETION_FOLDER = 'E:\\LIBRERIA_TECNICA\\01_INBOX\\Da_cancellare';
 
     public function __construct(private PDO $pdo) {}
 
@@ -260,7 +260,7 @@ final class EDuplicateService
     private function qualityScore(array $file): int
     {
         $extensionWeight = ['flac'=>9000,'wav'=>8500,'m4a'=>7000,'aac'=>6500,'mp3'=>6000,'ogg'=>5000,'opus'=>5000,'mp4'=>7000,'mkv'=>6500,'vob'=>6000];
-        $definitive=str_starts_with(strtoupper(canonicalPath((string)$file['file_path'])),'E:\\LIBRERIA_DEFINITIVA\\')?1000000:0;
+        $definitive=str_starts_with(strtoupper(canonicalPath((string)$file['file_path'])),strtoupper(definitiveMusicRoot().'\\'))?1000000:0;
         $congruence=$this->folderGenreCongruence((string)$file['folder'],(string)($file['genre']??''))*100000;
         $spotify=((int)($file['spotify_complete']??0)*20000)+((int)($file['has_spotify']??0)*10000);
         return $definitive+$congruence+$spotify+($extensionWeight[strtolower((string)$file['extension'])]??0)+((int)$file['bitrate']*10)+min(999,(int)($file['file_size']/1000000));
@@ -283,7 +283,7 @@ final class EDuplicateService
     private function recommendationReason(array $file): string
     {
         $reasons=[];
-        if(str_starts_with(strtoupper(canonicalPath((string)$file['file_path'])),'E:\\LIBRERIA_DEFINITIVA\\'))$reasons[]='libreria definitiva';
+        if(str_starts_with(strtoupper(canonicalPath((string)$file['file_path'])),strtoupper(definitiveMusicRoot().'\\')))$reasons[]='libreria musicale';
         if($this->folderGenreCongruence((string)$file['folder'],(string)($file['genre']??'')))$reasons[]='cartella congrua col genere';
         if((int)($file['spotify_complete']??0))$reasons[]='metriche Spotify complete';elseif((int)($file['has_spotify']??0))$reasons[]='Spotify ID presente';
         $reasons[]=strtoupper((string)$file['extension']);if(!empty($file['bitrate']))$reasons[]=(int)$file['bitrate'].' kbps';

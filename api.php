@@ -20,6 +20,7 @@ require __DIR__ . '/src/SessionTrackService.php';
 require __DIR__ . '/src/InboxService.php';
 require __DIR__ . '/src/SessionTrackUploadService.php';
 require __DIR__ . '/src/SpotifyDuplicateService.php';
+require __DIR__ . '/src/DataProtectionService.php';
 
 try {
     $pdo = db();
@@ -84,7 +85,8 @@ try {
         $settings = $pdo->query('SELECT `key`,value FROM settings')->fetchAll(PDO::FETCH_KEY_PAIR);
         $suggestionStart = !empty($settings['suggestion_start_track_id']) ? $library->find((int) $settings['suggestion_start_track_id']) : null;
         $requestCounts = is_array($remoteBootstrap) ? (array) ($remoteBootstrap['request_counts'] ?? []) : $pdo->query('SELECT status,COUNT(*) total FROM requests GROUP BY status')->fetchAll(PDO::FETCH_KEY_PAIR);
-        $driveEExpression = appUsesLocalFiles() ? "SUM(file_exists=1 AND UPPER(file_path) LIKE 'E:%')" : "SUM(UPPER(file_path) LIKE 'E:%')";
+        $libraryCondition = definitiveMusicSqlCondition();
+        $driveEExpression = appUsesLocalFiles() ? "SUM(file_exists=1 AND $libraryCondition)" : "SUM($libraryCondition)";
         $trackStats = $pdo->query("
             SELECT
                 COUNT(*) total,
@@ -92,7 +94,7 @@ try {
                 SUM(file_exists=0) missing,
                 $driveEExpression drive_e
             FROM tracks
-            WHERE UPPER(file_path) LIKE 'E:%'
+            WHERE $libraryCondition
         ")->fetch();
         $eDuplicateScan = (new EDuplicateService($pdo))->latestCompleted();
         jsonResponse([
@@ -153,11 +155,11 @@ try {
         $extension = "LOWER(SUBSTRING_INDEX(file_name,'.',-1))";
         $audio = "$extension IN ('mp3','m4a','aac','ogg','opus','wma','flac','wav','aiff','aif','alac')";
         $standard = "(($extension='mp3' AND COALESCE(bitrate,0)>=320) OR $extension IN ('flac','wav','aiff','aif','alac'))";
-        $base = (appUsesLocalFiles() ? "file_exists=1 AND " : "") . "UPPER(file_path) LIKE 'E:%'";
+        $base = (appUsesLocalFiles() ? "file_exists=1 AND " : "") . definitiveMusicSqlCondition();
         $counts = [
             'below_standard' => "($base AND $audio AND NOT $standard)",
-            'no_spotify_id' => "($base AND COALESCE(spotify_id,'')='')",
-            'missing_metrics' => "($base AND COALESCE(spotify_id,'')<>'' AND (spotify_features_updated_at IS NULL OR spotify_features_status NOT IN ('complete','partial')))",
+            'no_spotify_id' => "($base AND (COALESCE(spotify_id,'')='' OR spotify_id NOT REGEXP '^[A-Za-z0-9]{22}$'))",
+            'missing_metrics' => "($base AND spotify_id REGEXP '^[A-Za-z0-9]{22}$' AND (spotify_features_updated_at IS NULL OR spotify_features_status NOT IN ('complete','partial')))",
             'missing_genre' => "($base AND TRIM(COALESCE(genre,''))='')",
             'missing_year' => "($base AND (year IS NULL OR year=0))",
             'missing_key' => "($base AND TRIM(COALESCE(camelot,''))='' AND TRIM(COALESCE(musical_key,''))='')",
@@ -174,6 +176,10 @@ try {
         $track ? jsonResponse($track) : jsonResponse(['error'=>'Brano non trovato'], 404);
     }
     if ($action === 'taxonomy-refresh' && $method === 'POST') jsonResponse($library->refreshPathTaxonomy());
+    if ($action === 'data-snapshot' && $method === 'POST') jsonResponse((new DataProtectionService($pdo))->snapshot((string)($data['reason'] ?? 'manual')));
+    if ($action === 'path-prefix-rename' && $method === 'POST') jsonResponse((new DataProtectionService($pdo))->renamePathPrefix((string)($data['old_root'] ?? ''), (string)($data['new_root'] ?? ''), (string)($data['reason'] ?? 'path_prefix_rename')));
+    if ($action === 'physical-data-complete' && $method === 'POST') jsonResponse((new DataProtectionService($pdo))->completePhysicalTrackData('file_exists=1 AND ' . definitiveMusicSqlCondition()));
+    if ($action === 'physical-data-status') jsonResponse((new DataProtectionService($pdo))->metricsSnapshot('file_exists=1 AND ' . definitiveMusicSqlCondition()));
     if ($action === 'taxonomy-report') jsonResponse($library->taxonomyReport());
     if ($action === 'taxonomy-options') jsonResponse($library->taxonomyOptions());
     if ($action === 'playlists') jsonResponse(['root'=>(new PlaylistService())->root(),'items'=>(new PlaylistService())->playlists()]);
@@ -181,6 +187,7 @@ try {
     if ($action === 'playlist-detail') jsonResponse((new PlaylistService())->detail((string)($_GET['file']??'')));
     if ($action === 'playlist-candidates') jsonResponse((new PlaylistService())->candidates((string)($_GET['file']??''),$_GET));
     if ($action === 'playlist-external-compare' && $method === 'POST') jsonResponse((new PlaylistService())->compareExternalSpotifyList((array)($data['items']??[])));
+    if ($action === 'playlist-external-create' && $method === 'POST') jsonResponse((new PlaylistService())->createFromExternal((string)($data['name']??''),(array)($data['items']??[])));
     if ($action === 'playlist-external-folder-match' && $method === 'POST') jsonResponse((new PlaylistService())->matchExternalListToFolder((array)($data['items']??[]),(string)($data['folder']??'')));
     if ($action === 'playlist-external-apply-metadata' && $method === 'POST') jsonResponse((new PlaylistService())->applyExternalMetadata((array)($data['matches']??[])));
     if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[])));
@@ -205,7 +212,16 @@ try {
         jsonResponse(['items'=>$service->suggest(
             (int) ($_GET['current_id'] ?? 0),
             (string) ($_GET['mode'] ?? 'same'),
-            (string) ($_GET['tag'] ?? '')
+            (string) ($_GET['tag'] ?? ''),
+            [
+                'macro_genre' => (string)($_GET['macro_genre'] ?? ''),
+                'genre' => (string)($_GET['genre'] ?? ''),
+                'musical_key' => (string)($_GET['musical_key'] ?? ''),
+                'year' => (string)($_GET['year'] ?? ''),
+                'bpm_min' => (string)($_GET['bpm_min'] ?? ''),
+                'bpm_max' => (string)($_GET['bpm_max'] ?? ''),
+                'tag' => (string)($_GET['filter_tag'] ?? ''),
+            ]
         )]);
     }
     if (appUsesLocalFiles() && shouldProxyToHosting($action)) {
@@ -386,8 +402,8 @@ try {
     }
     if ($action === 'spotify-audio-features' && $method === 'POST') {
         $trackId = (int) ($data['id'] ?? 0);
-        $spotify = (new SpotifyAudioFeaturesService($pdo))->refreshReplacementMetadata($trackId);
-        jsonResponse(['ok'=>true,'features'=>$spotify['features'],'artist'=>$spotify['artist'],'title'=>$spotify['title'],'track'=>$library->find($trackId)]);
+        $features = (new SpotifyAudioFeaturesService($pdo))->enrich($trackId);
+        jsonResponse(['ok'=>true,'features'=>$features,'track'=>$library->find($trackId)]);
     }
     if ($action === 'touch-tracks' && $method === 'POST') {
         $ids=array_values(array_unique(array_filter(array_map('intval',(array)($data['ids']??[])),fn(int $id): bool=>$id>0)));
@@ -411,9 +427,11 @@ try {
         if(preg_match('~open\.spotify\.com/(?:intl-[a-z]+/)?track/([A-Za-z0-9]{22})~i',$url,$match))$spotifyId=$match[1];
         elseif(preg_match('~^spotify:track:([A-Za-z0-9]{22})$~i',$url,$match))$spotifyId=$match[1];
         if($trackId<1||$spotifyId==='')throw new RuntimeException('Link Spotify traccia non valido.');
+        $duplicate=$pdo->prepare("SELECT id,artist,title,file_path FROM tracks WHERE spotify_id=? AND id<>? AND file_exists=1 LIMIT 1");
+        $duplicate->execute([$spotifyId,$trackId]);$existing=$duplicate->fetch()?:null;
         $canonical='https://open.spotify.com/track/'.$spotifyId;
         $pdo->prepare("UPDATE tracks SET spotify_id=?,spotify_url=?,spotify_features_status='never',spotify_features_error='',updated_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$spotifyId,$canonical,$trackId]);
-        jsonResponse(['ok'=>true,'track'=>$library->find($trackId)]);
+        jsonResponse(['ok'=>true,'duplicate'=>$existing,'track'=>$library->find($trackId)]);
     }
     if ($action === 'spotify-clipboard-start' && $method === 'POST') {
         $trackId=(int)($data['id']??0);if(!$library->find($trackId))throw new RuntimeException('Brano non trovato.');
@@ -430,15 +448,40 @@ try {
         $clipboard=trim((string)@shell_exec('powershell.exe -NoProfile -Command "Get-Clipboard -Raw"'));
         if(!preg_match('~https?://open\.spotify\.com/(?:intl-[a-z]+/)?track/([A-Za-z0-9]{22})~i',$clipboard,$match))jsonResponse(['pending'=>true]);
         $spotifyId=$match[1];$canonical='https://open.spotify.com/track/'.$spotifyId;
+        $duplicate=$pdo->prepare("SELECT id,artist,title,file_path FROM tracks WHERE spotify_id=? AND id<>? AND file_exists=1 LIMIT 1");
+        $duplicate->execute([$spotifyId,$trackId]);$existing=$duplicate->fetch()?:null;
         $pdo->prepare("UPDATE tracks SET spotify_id=?,spotify_url=?,spotify_features_status='never',spotify_features_error='',updated_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$spotifyId,$canonical,$trackId]);
         $pdo->prepare("DELETE FROM settings WHERE `key` IN ('spotify_clipboard_track_id','spotify_clipboard_started_at')")->execute();
-        jsonResponse(['pending'=>false,'saved'=>true,'track'=>$library->find($trackId)]);
+        jsonResponse(['pending'=>false,'saved'=>true,'duplicate'=>$existing,'track'=>$library->find($trackId)]);
+    }
+    if ($action === 'spotify-clipboard-lookup-start' && $method === 'POST') {
+        @shell_exec('powershell.exe -NoProfile -Command "Set-Clipboard -Value \'\'"');
+        $statement=$pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
+        $statement->execute(['spotify_clipboard_lookup_started_at',(string)time()]);
+        jsonResponse(['ok'=>true]);
+    }
+    if ($action === 'spotify-clipboard-lookup-status') {
+        $started=(int)($pdo->query("SELECT value FROM settings WHERE `key`='spotify_clipboard_lookup_started_at'")->fetchColumn() ?: time());
+        if($started<time()-120)jsonResponse(['pending'=>false,'found'=>false,'expired'=>true]);
+        $clipboard=trim((string)@shell_exec('powershell.exe -NoProfile -Command "Get-Clipboard -Raw"'));
+        if(!preg_match('~https?://open\.spotify\.com/(?:intl-[a-z]+/)?track/([A-Za-z0-9]{22})~i',$clipboard,$match))jsonResponse(['pending'=>true]);
+        $spotifyId=$match[1];$canonical='https://open.spotify.com/track/'.$spotifyId;
+        $statement=$pdo->prepare("SELECT id FROM tracks WHERE spotify_id=? AND file_exists=1 AND ".definitiveMusicSqlCondition()." LIMIT 1");
+        $statement->execute([$spotifyId]);
+        $trackId=(int)($statement->fetchColumn() ?: 0);
+        $pdo->prepare("DELETE FROM settings WHERE `key`='spotify_clipboard_lookup_started_at'")->execute();
+        jsonResponse(['pending'=>false,'found'=>$trackId>0,'spotify_id'=>$spotifyId,'spotify_url'=>$canonical,'track'=>$trackId>0?$library->find($trackId):null]);
     }
     if ($action === 'replacement-watch-start' && $method === 'POST') jsonResponse((new AudioReplacementService($pdo,$library))->start((int)($data['id']??0)));
     if ($action === 'replacement-watch-status') jsonResponse((new AudioReplacementService($pdo,$library))->status());
     if ($action === 'replacement-watch-confirm-media-change' && $method === 'POST') jsonResponse((new AudioReplacementService($pdo,$library))->confirmMediaChange());
     if ($action === 'track-delete' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->delete((int)($data['id']??0)));
+    if ($action === 'duplicate-file-delete' && $method === 'POST') {
+        $service = new TrackDeletionService($pdo,$library);
+        jsonResponse($service->deletePath((string)($data['path'] ?? '')));
+    }
     if ($action === 'track-move' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->move((int)($data['id']??0)));
+    if ($action === 'track-move-folder' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->moveToFolder((int)($data['id']??0),(string)($data['folder']??'')));
     if ($action === 'track-move-to-delete' && $method === 'POST') jsonResponse((new TrackDeletionService($pdo,$library))->moveToDeletionFolder((int)($data['id']??0)));
     if ($action === 'spotify-identify-features' && $method === 'POST') {
         $trackId = (int) ($data['id'] ?? 0);
@@ -479,7 +522,7 @@ try {
     }
     if ($action === 'vdj-genre-stats') {
         $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
-        $items=$pdo->query("SELECT MIN(TRIM(genre)) genre,COUNT(*) total FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND TRIM(COALESCE(genre,''))<>'' GROUP BY LOWER(TRIM(genre)) ORDER BY total DESC,genre")->fetchAll();
+        $items=$pdo->query("SELECT MIN(TRIM(genre)) genre,COUNT(*) total FROM tracks WHERE {$localFilter}" . definitiveMusicSqlCondition() . " AND TRIM(COALESCE(genre,''))<>'' GROUP BY LOWER(TRIM(genre)) ORDER BY total DESC,genre")->fetchAll();
         jsonResponse(['items'=>$items,'total_genres'=>count($items),'total_tracks'=>array_sum(array_map(fn(array $item)=>(int)$item['total'],$items))]);
     }
     if ($action === 'library-standard-validate') jsonResponse((new LibraryStandardService())->validate());
@@ -519,6 +562,9 @@ try {
     if ($action === 'vdj-align-artist-title' && $method === 'POST') jsonResponse($virtualDjControl->alignArtistTitle((int)($data['id']??0)));
     if ($action === 'vdj-automix-add' && $method === 'POST') jsonResponse((new VirtualDjControlService($pdo))->addTrackToAutomix((int)($data['id']??0)));
     if ($action === 'vdj-prelisten' && $method === 'POST') jsonResponse($virtualDjControl->prelistenTrack((int)($data['id']??0)));
+    if ($action === 'duplicate-prelisten' && $method === 'POST') {
+        jsonResponse($virtualDjControl->prelistenPath((string)($data['path'] ?? '')));
+    }
     if ($action === 'vdj-prelisten-stop' && $method === 'POST') jsonResponse($virtualDjControl->stopPrelisten());
     if ($action === 'suggestion-start' && $method === 'POST') {
         $trackId = (int) ($data['id'] ?? 0);
@@ -699,6 +745,7 @@ function apiRegiaLocalActions(): array
         'vdj-automix-add',
         'vdj-prelisten',
         'vdj-prelisten-stop',
+        'duplicate-prelisten',
         'queue',
         'played',
         'quiz-codex-suggest',
@@ -711,6 +758,10 @@ function apiStudioLocalActions(): array
         'tracks',
         'track',
         'track-update',
+        'data-snapshot',
+        'path-prefix-rename',
+        'physical-data-complete',
+        'physical-data-status',
         'taxonomy-refresh',
         'taxonomy-report',
         'taxonomy-options',
@@ -721,6 +772,7 @@ function apiStudioLocalActions(): array
         'playlist-detail',
         'playlist-candidates',
         'playlist-external-compare',
+        'playlist-external-create',
         'playlist-external-folder-match',
         'playlist-external-apply-metadata',
         'playlist-save-order',
@@ -754,6 +806,8 @@ function apiStudioLocalActions(): array
         'spotify-link-update',
         'spotify-clipboard-start',
         'spotify-clipboard-status',
+        'spotify-clipboard-lookup-start',
+        'spotify-clipboard-lookup-status',
         'spotify-identify-features',
         'spotify-identify',
         'spotify-candidates',
@@ -761,7 +815,9 @@ function apiStudioLocalActions(): array
         'replacement-watch-status',
         'replacement-watch-confirm-media-change',
         'track-delete',
+        'duplicate-file-delete',
         'track-move',
+        'track-move-folder',
         'track-move-to-delete',
         'touch-tracks',
         'touch-track-file',

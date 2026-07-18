@@ -5,8 +5,6 @@ final class AudioReplacementService
 {
     private const EXTENSIONS = ['mp3','m4a','aac','ogg','opus','flac','wav','mp4','m4v','mov','mkv','avi','webm','wmv'];
     private const VIDEO_EXTENSIONS = ['mp4','m4v','mov','mkv','avi','webm','wmv'];
-    private const ARCHIVE = 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Sostituzioni';
-
     public function __construct(private PDO $pdo, private LibraryService $library) {}
 
     public function start(int $trackId): array
@@ -103,7 +101,7 @@ final class AudioReplacementService
 
     private function stagingDirectory(): string
     {
-        $fallback = 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Da_classificare';
+        $fallback = technicalAreaPath('01_INBOX\\Da_classificare');
         $directory = canonicalPath((string)setting('spotmate_download_folder', $fallback));
         if ($directory === '') $directory = $fallback;
         if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
@@ -139,9 +137,10 @@ final class AudioReplacementService
 
         $target = $oldExtension === $newExtension ? $old : dirname($old) . '\\' . pathinfo($old, PATHINFO_FILENAME) . '.' . $newExtension;
         if ($target !== $old && file_exists($target)) throw new RuntimeException('Esiste gia un file con il nuovo formato nella cartella originale.');
-        if (!is_dir(self::ARCHIVE) && !mkdir(self::ARCHIVE, 0777, true) && !is_dir(self::ARCHIVE)) throw new RuntimeException('Impossibile creare Inbox/Sostituzioni.');
-        $backup = self::ARCHIVE . '\\' . basename($old);
-        if (file_exists($backup)) $backup = self::ARCHIVE . '\\' . pathinfo($old, PATHINFO_FILENAME) . '_' . date('Ymd_His') . '.' . $oldExtension;
+        $archive = technicalAreaPath('01_INBOX\\Sostituzioni');
+        if (!is_dir($archive) && !mkdir($archive, 0777, true) && !is_dir($archive)) throw new RuntimeException('Impossibile creare Inbox/Sostituzioni.');
+        $backup = $archive . '\\' . basename($old);
+        if (file_exists($backup)) $backup = $archive . '\\' . pathinfo($old, PATHINFO_FILENAME) . '_' . date('Ymd_His') . '.' . $oldExtension;
         if (!rename($old, $backup)) throw new RuntimeException('Impossibile archiviare il file precedente.');
         try {
             $this->moveVerified($download, $target);

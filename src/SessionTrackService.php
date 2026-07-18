@@ -94,7 +94,7 @@ final class SessionTrackService
         $statement = $this->pdo->prepare("
             SELECT id,artist,title,normalized_artist,normalized_title,genre,year
             FROM tracks
-            WHERE {$localFilter}UPPER(file_path) LIKE 'E:%'
+            WHERE {$localFilter}" . definitiveMusicSqlCondition() . "
               {$inboxFilter}
               AND TRIM(COALESCE(artist,'')) <> ''
               AND TRIM(COALESCE(title,'')) <> ''

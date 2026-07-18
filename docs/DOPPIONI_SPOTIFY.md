@@ -1,10 +1,10 @@
-# Doppioni Spotify
+﻿# Doppioni Spotify
 
 Data definizione: 2026-07-13.
 
 ## Obiettivo
 
-Usare `spotify_id` e `isrc` per individuare doppioni nella libreria definitiva `E:\LIBRERIA_DEFINITIVA`.
+Usare `spotify_id` e `isrc` per individuare doppioni nella libreria musicale `E:\LIBRERIA_MUSICALE`.
 
 Il report base e diagnostico:
 
@@ -69,7 +69,7 @@ Nella vista `Qualita / Doppioni`:
 - `Marca non consigliati Spotify` marca i non consigliati come gli altri doppioni;
 - `Approva tutti` approva i candidati marcati;
 - `Archivio approvati` mostra i candidati approvati;
-- `Cerca e sposta tutto` usa il flusso esistente e sposta i file approvati in `E:\LIBRERIA_DEFINITIVA\01_INBOX\Da_cancellare`.
+- `Cerca e sposta tutto` usa il flusso esistente e sposta i file approvati in `E:\LIBRERIA_TECNICA\01_INBOX\Da_cancellare`.
 
 ## Criteri di sicurezza
 

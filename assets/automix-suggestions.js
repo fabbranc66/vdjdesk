@@ -29,7 +29,11 @@ loadSuggestions = async function(mode = state.currentMode, tag = activeSuggestio
   suggestionFilterBar.querySelector('span').textContent = activeSuggestionTag ? `Tag: ${activeSuggestionTag}` : '';
   renderStartTrack(currentId);
   $('#suggestions-list').innerHTML = '<div class="empty-state">Analisi compatibilità in corso…</div>';
-  const data = await api(`suggestions&current_id=${currentId}&mode=${encodeURIComponent(mode)}&tag=${encodeURIComponent(activeSuggestionTag)}`);
+  const params = typeof suggestionFilterParams === 'function' ? suggestionFilterParams() : new URLSearchParams();
+  params.set('current_id', String(currentId));
+  params.set('mode', mode);
+  params.set('tag', activeSuggestionTag);
+  const data = await api(`suggestions&${params}`);
   const items = [...data.items];
   const reference = state.tracks.find(track => Number(track.id) === currentId) || state.bootstrap?.current || {};
   const metric = {up:'kr_energy',down:'kr_energy',genre:'kr_genre_change_safe',sing:'kr_singability',recover:'kr_recovery'}[mode];

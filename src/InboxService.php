@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 final class InboxService
 {
-    private const ROOT = 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX';
-
     public function __construct(private PDO $pdo) {}
 
     public function status(int $limit = 200): array
@@ -15,7 +13,7 @@ final class InboxService
             $items[] = $this->decorate($row);
         }
         return [
-            'root' => self::ROOT,
+            'root' => technicalAreaPath('01_INBOX'),
             'summary' => $this->summary(),
             'items' => $items,
             'limit' => max(1, min(500, $limit)),
@@ -24,15 +22,17 @@ final class InboxService
 
     private function rows(int $limit): array
     {
+        $inboxCondition = sqlPathStartsWith('file_path', technicalAreaPath('01_INBOX'));
+        $musicCondition = definitiveMusicSqlCondition();
         $statement = $this->pdo->query("
             SELECT id,artist,title,normalized_artist,normalized_title,file_path,folder,genre,genre_manual,year,bpm,musical_key,camelot,tags,auto_tags,version,
                    rating,play_count,spotify_id,spotify_features_status,spotify_features_updated_at,spotify_features_error,metadata_source,dj_scores_manual,
                    energy,singability,danceability,familiarity,risk,updated_at
             FROM tracks
-            WHERE UPPER(file_path) LIKE 'E:\\\\\\\\LIBRERIA_DEFINITIVA\\\\\\\\01_INBOX\\\\\\\\%'
-               OR UPPER(file_path) LIKE 'E:\\\\\\\\LIBRERIA_DEFINITIVA\\\\\\\\%'
+            WHERE $inboxCondition
+               OR $musicCondition
             ORDER BY
-                CASE WHEN UPPER(file_path) LIKE 'E:\\\\\\\\LIBRERIA_DEFINITIVA\\\\\\\\01_INBOX\\\\\\\\%' THEN 0 ELSE 1 END,
+                CASE WHEN $inboxCondition THEN 0 ELSE 1 END,
                 updated_at DESC,
                 artist,
                 title
@@ -44,12 +44,13 @@ final class InboxService
     private function summary(): array
     {
         $summary = array_fill_keys($this->states(), 0);
+        $inboxCondition = sqlPathStartsWith('file_path', technicalAreaPath('01_INBOX'));
         $statement = $this->pdo->query("
             SELECT id,artist,title,normalized_artist,normalized_title,file_path,folder,genre,genre_manual,year,bpm,musical_key,camelot,tags,auto_tags,version,
                    rating,play_count,spotify_id,spotify_features_status,spotify_features_updated_at,spotify_features_error,metadata_source,dj_scores_manual,
                    energy,singability,danceability,familiarity,risk,updated_at
             FROM tracks
-            WHERE UPPER(file_path) LIKE 'E:\\\\\\\\LIBRERIA_DEFINITIVA\\\\\\\\01_INBOX\\\\\\\\%'
+            WHERE $inboxCondition
         ");
         foreach ($statement->fetchAll() as $row) {
             $summary[$this->state($row)]++;
@@ -84,7 +85,7 @@ final class InboxService
         $path = strtoupper((string)$row['file_path']);
         if (str_contains($path, '\\01_INBOX\\DA_CANCELLARE\\')) return 'DA_CANCELLARE';
         if (str_contains($path, '\\01_INBOX\\SOSTITUZIONI\\')) return 'DA_ASCOLTARE';
-        if (!str_contains($path, '\\01_INBOX\\') && str_starts_with($path, 'E:\\LIBRERIA_DEFINITIVA\\')) return 'ARCHIVIATO';
+        if (str_starts_with(strtoupper(canonicalPath((string)$row['file_path'])), strtoupper(definitiveMusicRoot() . '\\'))) return 'ARCHIVIATO';
         if (trim((string)$row['artist']) === '' || trim((string)$row['title']) === '') return 'DA_CATALOGARE';
         if ((string)$row['spotify_features_status'] === 'error' || $this->matchConfidence($row) < 40) return 'CONFLITTO';
         if (trim((string)$row['genre']) === '' || $this->classificationConsistency($row) < 45) return 'DA_RICLASSIFICARE';

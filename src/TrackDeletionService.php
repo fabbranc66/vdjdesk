@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 final class TrackDeletionService
 {
-    private const LIBRARY_ROOT='E:\\LIBRERIA_DEFINITIVA';
-
     public function __construct(private PDO $pdo,private LibraryService $library){}
 
     public function delete(int $trackId): array
@@ -35,10 +33,54 @@ final class TrackDeletionService
         return ['ok'=>true,'id'=>$trackId,'path'=>$path];
     }
 
-    private function releaseVirtualDjHandle(): void
+    public function deletePath(string $path): array
+    {
+        $path=canonicalPath($path);
+        if($path===''||!preg_match('/^E:\\\\/i',$path))throw new RuntimeException('Cancellazione consentita solo sul drive E:.');
+        if(!is_file($path))throw new RuntimeException('File fisico non disponibile.');
+        $this->releaseVirtualDjHandle($path);
+        $message='';
+        for($attempt=1;$attempt<=15&&is_file($path);$attempt++){
+            $errorBefore=error_get_last();
+            if(@unlink($path))break;
+            $error=error_get_last();
+            $message=is_array($error)&&$error!==$errorBefore?(string)($error['message']??''):$message;
+            usleep(400000);
+        }
+        if(is_file($path)){
+            if(stripos($message,'Resource temporarily unavailable')!==false||stripos($message,'being used')!==false||stripos($message,'in uso')!==false){
+                throw new RuntimeException('Cancellazione non riuscita: file in uso da VirtualDJ. Scaricalo dai deck/preascolto o chiudi VirtualDJ, poi riprova.');
+            }
+            throw new RuntimeException('Cancellazione non riuscita'.($message!==''?': '.$message:'.'));
+        }
+        clearstatcache(true,$path);
+        if(is_file($path))throw new RuntimeException('Cancellazione non riuscita: file ancora presente.');
+        $this->pdo->prepare("UPDATE tracks SET file_exists=0,updated_at=CURRENT_TIMESTAMP WHERE file_path=?")->execute([$path]);
+        $this->pdo->prepare("UPDATE deletion_candidates SET status='deleted',decision_note='Eliminato fisicamente dalla pagina doppioni',last_seen_at=CURRENT_TIMESTAMP WHERE source_path=? OR e_file_path=?")->execute([$path,$path]);
+        return ['ok'=>true,'path'=>$path];
+    }
+
+    private function releaseVirtualDjHandle(string $lockedPath=''): void
     {
         if(!class_exists('VirtualDjControlService')) return;
-        try{(new VirtualDjControlService($this->pdo))->stopPrelisten();}catch(Throwable){}
+        try{
+            $control=new VirtualDjControlService($this->pdo);
+            $control->stopPrelisten();
+            if($lockedPath!==''){
+                $statement=$this->pdo->prepare('SELECT file_path FROM tracks WHERE file_exists=1 AND file_path<>? ORDER BY id LIMIT 20');
+                $statement->execute([$lockedPath]);
+                foreach($statement->fetchAll(PDO::FETCH_COLUMN) as $replacementPath){
+                    $replacementPath=canonicalPath((string)$replacementPath);
+                    if($replacementPath!==''&&is_file($replacementPath)){
+                        try{
+                            $control->releasePrelistenToPath($replacementPath);
+                            return;
+                        }catch(Throwable){}
+                    }
+                }
+            }
+            usleep(800000);
+        }catch(Throwable){}
     }
 
     public function move(int $trackId): array
@@ -62,13 +104,39 @@ final class TrackDeletionService
         return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];
     }
 
+    public function moveToFolder(int $trackId, string $destination): array
+    {
+        $track=$this->library->find($trackId);
+        if(!$track)throw new RuntimeException('Brano non trovato.');
+        $source=canonicalPath((string)$track['file_path']);
+        if(!is_file($source))throw new RuntimeException('File fisico non disponibile.');
+        $destination=canonicalPath($destination);
+        $musicRoot=definitiveMusicRoot();
+        if($destination===''||!is_dir($destination)||!str_starts_with(strtoupper($destination.'\\'),strtoupper($musicRoot.'\\')))throw new RuntimeException('Destinazione fuori dalla Libreria Musicale.');
+        $target=$destination.'\\'.basename($source);
+        if(file_exists($target))throw new RuntimeException('Nella cartella scelta esiste gia un file con lo stesso nome.');
+        $this->releaseVirtualDjHandle();
+        $size=(int)filesize($source);
+        if(!@rename($source,$target)){
+            if(!@copy($source,$target)||(int)filesize($target)!==$size){@unlink($target);throw new RuntimeException('Spostamento non riuscito.');}
+            if(!@unlink($source)){@unlink($target);throw new RuntimeException('Impossibile completare lo spostamento.');}
+        }
+        clearstatcache(true,$target);
+        if(!is_file($target)||file_exists($source)||(int)filesize($target)!==$size)throw new RuntimeException('Verifica finale dello spostamento non riuscita.');
+        @touch($target);
+        $taxonomy=trackTaxonomyFromPath($target);
+        $this->pdo->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,archive_area=?,macro_genre=?,folder_genre=?,file_size=?,file_exists=1,source='manual',updated_at=CURRENT_TIMESTAMP WHERE id=?")
+            ->execute([$target,basename($target),dirname($target),$taxonomy['archive_area'],$taxonomy['macro_genre'],$taxonomy['folder_genre'],(int)filesize($target),$trackId]);
+        return ['ok'=>true,'track'=>$this->library->find($trackId),'old_path'=>$source,'path'=>$target];
+    }
+
     public function moveToDeletionFolder(int $trackId): array
     {
         $track=$this->library->find($trackId);
         if(!$track)throw new RuntimeException('Brano non trovato.');
         $source=canonicalPath((string)$track['file_path']);
         if(!is_file($source))throw new RuntimeException('File fisico non disponibile.');
-        $destination=self::LIBRARY_ROOT.'\\01_INBOX\\Da_cancellare';
+        $destination=technicalAreaPath('01_INBOX\\Da_cancellare');
         if(!is_dir($destination))throw new RuntimeException('Cartella Da_cancellare non disponibile: '.$destination);
         if(str_starts_with(strtoupper($source),strtoupper($destination.'\\')))throw new RuntimeException('Il file e gia nella cartella Da_cancellare.');
         $target=$destination.'\\'.basename($source);
@@ -102,7 +170,7 @@ final class TrackDeletionService
         ];
         $relative=$map[$normalized]??'';
         if($relative==='')throw new RuntimeException('Nessuna cartella definitiva configurata per il genere: '.($genre!==''?$genre:'non indicato'));
-        $destination=self::LIBRARY_ROOT.'\\'.$relative;
+        $destination=definitiveMusicRoot().'\\'.$relative;
         if(!is_dir($destination))throw new RuntimeException('Cartella definitiva non disponibile: '.$destination);
         return $destination;
     }

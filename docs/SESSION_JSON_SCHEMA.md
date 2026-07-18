@@ -1,4 +1,4 @@
-# Session JSON Schema
+﻿# Session JSON Schema
 
 Data definizione: 2026-07-13.
 
@@ -55,23 +55,23 @@ Il file deve essere UTF-8, JSON valido, senza BOM.
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `schema` | string | sì | Sempre `krdesk.session_tracks` |
-| `schema_version` | integer | sì | Versione iniziale `1` |
-| `generated_at` | string | sì | ISO 8601 con timezone |
-| `source` | object | sì | Informazioni Studio/export |
-| `session` | object | sì | Evento o sessione live |
-| `stats` | object | sì | Conteggi rapidi |
-| `tracks` | array | sì | Elenco brani pubblicabili |
+| `schema` | string | sÃ¬ | Sempre `krdesk.session_tracks` |
+| `schema_version` | integer | sÃ¬ | Versione iniziale `1` |
+| `generated_at` | string | sÃ¬ | ISO 8601 con timezone |
+| `source` | object | sÃ¬ | Informazioni Studio/export |
+| `session` | object | sÃ¬ | Evento o sessione live |
+| `stats` | object | sÃ¬ | Conteggi rapidi |
+| `tracks` | array | sÃ¬ | Elenco brani pubblicabili |
 
 ## Oggetto `source`
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `app` | string | sì | `KR DJ Desk` |
-| `environment` | string | sì | `studio-local` |
+| `app` | string | sÃ¬ | `KR DJ Desk` |
+| `environment` | string | sÃ¬ | `studio-local` |
 | `database` | string | no | Nome database sorgente |
 | `library_root` | string | no | Solo indicazione sintetica, es. `E:` |
-| `export_profile` | string | sì | `public-request-search` |
+| `export_profile` | string | sÃ¬ | `public-request-search` |
 
 `source` non deve contenere path completi dei file audio.
 
@@ -79,8 +79,8 @@ Il file deve essere UTF-8, JSON valido, senza BOM.
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `id` | string | sì | ID stabile evento/sessione |
-| `name` | string | sì | Nome leggibile |
+| `id` | string | sÃ¬ | ID stabile evento/sessione |
+| `name` | string | sÃ¬ | Nome leggibile |
 | `event_date` | string | no | `YYYY-MM-DD` |
 | `venue` | string | no | Locale/evento |
 | `notes` | string | no | Note non pubbliche o vuote |
@@ -120,12 +120,12 @@ Il file deve essere UTF-8, JSON valido, senza BOM.
 
 | Campo | Tipo | Obbligatorio | Note |
 | --- | --- | --- | --- |
-| `track_id` | integer | sì | ID locale KR Desk; diventa riferimento richiesta |
-| `artist` | string | sì | Snapshot pubblico artista |
-| `title` | string | sì | Snapshot pubblico titolo |
-| `artist_normalized` | string | sì | Da `normalized_artist` |
-| `title_normalized` | string | sì | Da `normalized_title` |
-| `search_text` | string | sì | Testo già normalizzato per ricerca client/server |
+| `track_id` | integer | sÃ¬ | ID locale KR Desk; diventa riferimento richiesta |
+| `artist` | string | sÃ¬ | Snapshot pubblico artista |
+| `title` | string | sÃ¬ | Snapshot pubblico titolo |
+| `artist_normalized` | string | sÃ¬ | Da `normalized_artist` |
+| `title_normalized` | string | sÃ¬ | Da `normalized_title` |
+| `search_text` | string | sÃ¬ | Testo giÃ  normalizzato per ricerca client/server |
 | `genre` | string | no | Genere principale attuale |
 | `macro_genre` | string | no | Macro area DJ, se disponibile |
 | `subgenre` | string | no | Sottogenere, se disponibile |
@@ -135,11 +135,11 @@ Il file deve essere UTF-8, JSON valido, senza BOM.
 | `camelot` | string | no | Chiave Camelot |
 | `tags` | array[string] | no | Tag manuali/automatici pubblicabili |
 | `version` | string | no | Clean, remix, extended, live, ecc. |
-| `priority` | integer | sì | 0-100 per ordinamento risultati |
-| `available` | boolean | sì | Brano disponibile nella sessione |
-| `public` | boolean | sì | Brano visibile alla ricerca pubblico |
-| `requestable` | boolean | sì | Brano richiedibile |
-| `session` | object | sì | Collegamento evento/sessione |
+| `priority` | integer | sÃ¬ | 0-100 per ordinamento risultati |
+| `available` | boolean | sÃ¬ | Brano disponibile nella sessione |
+| `public` | boolean | sÃ¬ | Brano visibile alla ricerca pubblico |
+| `requestable` | boolean | sÃ¬ | Brano richiedibile |
+| `session` | object | sÃ¬ | Collegamento evento/sessione |
 
 ## Campi esclusi
 
@@ -151,14 +151,14 @@ Il JSON sessione non deve contenere:
 - path `E:\`, `C:\`, `D:\`
 - bitrate, file size, hash, database VirtualDJ;
 - token Spotify o credenziali;
-- dati di cancellazione, doppioni, scan o qualità file;
+- dati di cancellazione, doppioni, scan o qualitÃ  file;
 - campi Studio usati solo per manutenzione.
 
 ## Regole di export Studio
 
 Lo Studio locale esporta solo brani:
 
-- con `UPPER(file_path) LIKE 'E:%'`;
+- con root musica configurata (`definitive_music_root`, default `E:\LIBRERIA_MUSICALE`);
 - disponibili o selezionati manualmente per la sessione;
 - non marcati come esclusi dalla serata;
 - con artista e titolo valorizzati;
@@ -205,7 +205,7 @@ Formula iniziale consigliata:
 - `-20` se `risk >= 4`;
 - `-10` se `available=false`.
 
-La formula può cambiare, ma il campo esportato deve restare già calcolato: la Regia hosting non deve ricalcolarlo usando logiche Studio.
+La formula puÃ² cambiare, ma il campo esportato deve restare giÃ  calcolato: la Regia hosting non deve ricalcolarlo usando logiche Studio.
 
 ## Uso in Regia hosting
 
@@ -251,7 +251,7 @@ Quando arriva `request-create`, hosting deve salvare:
 - `client_ip`;
 - stato iniziale `new`.
 
-La tabella attuale `requests` salva già `track_id` e `query`.
+La tabella attuale `requests` salva giÃ  `track_id` e `query`.
 
 Debito tecnico da aggiungere prima del pieno distacco:
 
@@ -260,7 +260,7 @@ Debito tecnico da aggiungere prima del pieno distacco:
 - campo `session_id`;
 - campo `session_track_payload` opzionale JSON.
 
-Finché questi campi non esistono, `query` deve contenere uno snapshot leggibile.
+FinchÃ© questi campi non esistono, `query` deve contenere uno snapshot leggibile.
 
 ## Import post-serata nello Studio
 
@@ -269,18 +269,18 @@ Dopo la serata:
 1. esportare richieste dal database hosting;
 2. importarle nello Studio locale;
 3. riconciliare usando `track_id`;
-4. se `track_id` non esiste più, usare snapshot artista/titolo;
+4. se `track_id` non esiste piÃ¹, usare snapshot artista/titolo;
 5. non usare mai path hosting per modificare file locali;
 6. applicare eventuali azioni Automix solo dal PC DJ locale.
 
 ## Validazione minima
 
-Un file sessione è valido se:
+Un file sessione Ã¨ valido se:
 
 - JSON parse OK;
 - `schema = krdesk.session_tracks`;
 - `schema_version = 1`;
-- `tracks` è array;
+- `tracks` Ã¨ array;
 - ogni track ha `track_id`, `artist`, `title`, `search_text`, `priority`, `available`, `public`, `requestable`;
 - nessun valore contiene path Windows completi;
 - `stats.tracks` coincide con `tracks.length`.
@@ -363,4 +363,4 @@ Da fare dopo:
 1. aggiungere una UI Studio per l'export;
 2. configurare `session_tracks_upload` in `config.php` per usare il pulsante `Genera + carica hosting`;
 3. aggiungere campi snapshot richiesta nel database hosting;
-4. separare fisicamente API Regia e Studio nella Priorità 3.
+4. separare fisicamente API Regia e Studio nella PrioritÃ  3.

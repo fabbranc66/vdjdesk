@@ -3,6 +3,7 @@ let externalCompareFilter='missing';
 let externalCompareSort={field:'position',direction:1};
 let externalRawItems=[];
 let externalFolderMatchResult=null;
+let externalImportedName='playlist_importata';
 
 function externalFlattenJson(data){
   if(Array.isArray(data))return data;
@@ -53,11 +54,92 @@ function externalRender(filter='missing'){
 }
 
 function externalRow(item,filter){
-  const spotify=item.trackLink||item.spotify_url||(item.spotify_id?`https://open.spotify.com/track/${encodeURIComponent(item.spotify_id)}`:'');
+  const spotify=externalSpotifyUrl(item);
   const match=(item.matches||[])[0];
   const matchHtml=match?`<small class="external-match">Match: ${escapeHtml(match.artist||'')} — ${escapeHtml(match.title||'')} · ${escapeHtml(match.file_path||'')}</small>`:'';
   const actions=filter==='missing'?`<div class="external-actions">${spotify?`<a class="button ghost" target="vdjdesk_spotify" href="${escapeHtml(spotify)}">Apri Spotify</a>`:''}</div>`:'';
-  return `<article class="external-row ${filter}" data-spotify-id="${escapeHtml(item.spotify_id||'')}"><div class="external-main"><b>${escapeHtml(item.artist||'Artista sconosciuto')} — ${escapeHtml(item.title||'Titolo mancante')}</b><small>${escapeHtml(item.reason||'')}</small>${matchHtml}<div class="external-meta"><span>#${escapeHtml(String(item.position||''))}</span>${item.spotify_id?`<span>ID ${escapeHtml(item.spotify_id)}</span>`:''}${item.isrc?`<span>ISRC ${escapeHtml(item.isrc)}</span>`:''}${item.duration?`<span>${formatDuration(item.duration)}</span>`:''}</div></div>${actions}</article>`;
+  const titleDots=filter==='doubtful'?externalTitleDots(item):'';
+  return `<article class="external-row ${filter}" data-spotify-id="${escapeHtml(item.spotify_id||'')}"><div class="external-main"><div class="external-title-line"><b>${escapeHtml(item.artist||'Artista sconosciuto')} — ${escapeHtml(item.title||'Titolo mancante')}</b>${titleDots}</div><small>${escapeHtml(item.reason||'')}</small>${matchHtml}<div class="external-meta"><span>#${escapeHtml(String(item.position||''))}</span>${item.spotify_id?`<span>ID ${escapeHtml(item.spotify_id)}</span>`:''}${item.isrc?`<span>ISRC ${escapeHtml(item.isrc)}</span>`:''}${item.duration?`<span>${formatDuration(item.duration)}</span>`:''}</div></div>${actions}</article>`;
+}
+
+function externalQuery(item){return [item.artist,item.title].filter(Boolean).join(' ').trim()}
+function externalSpotifyUrl(item){return item.trackLink||item.spotify_url||(item.spotify_id?`https://open.spotify.com/track/${encodeURIComponent(item.spotify_id)}`:(externalQuery(item)?`https://open.spotify.com/search/${encodeURIComponent(externalQuery(item))}`:''))}
+function externalTitleDots(item){
+  const query=externalQuery(item);
+  const spotify=externalSpotifyUrl(item);
+  const match=(item.matches||[])[0]||{};
+  const trackId=Number(match.id||0);
+  const spotifyButton=spotify
+    ? `<button type="button" class="external-title-dot spotify" data-external-spotify-acquire="${trackId}" data-external-spotify-url="${escapeHtml(spotify)}" title="Cerca su Spotify e verifica se esiste in KR Desk">S</button>`
+    : (spotify?`<a class="external-title-dot spotify" target="vdjdesk_spotify" href="${escapeHtml(spotify)}" title="Cerca/apri su Spotify">S</a>`:'');
+  const spotmatePayload=encodeURIComponent(JSON.stringify({track_id:trackId,query,spotify_url:item.trackLink||item.spotify_url||(item.spotify_id?`https://open.spotify.com/track/${item.spotify_id}`:''),artist:item.artist||'',title:item.title||''}));
+  return `<span class="external-title-actions">${spotifyButton}<button type="button" class="external-title-dot spotmate" data-external-spotmate="${spotmatePayload}" title="Copia link/query e apri SpotMate">M</button><button type="button" class="external-title-dot kr" data-external-kr-search="${escapeHtml(query)}" title="Cerca in Libreria KR Desk">K</button></span>`;
+}
+
+let externalSpotifyClipboardTimer=null;
+async function externalAcquireSpotifyId(button){
+  const trackId=Number(button.dataset.externalSpotifyAcquire||0);
+  const url=button.dataset.externalSpotifyUrl||'';
+  if(!url){window.open('https://open.spotify.com/search','vdjdesk_spotify','noopener');return}
+  const spotifyWindow=window.open('about:blank','vdjdesk_spotify');
+  button.disabled=true;
+  try{
+    await post('spotify-clipboard-lookup-start',{});
+    toast('Appunti azzerati - copia il link Spotify per verificare KR Desk');
+    if(spotifyWindow){spotifyWindow.location.href=url;spotifyWindow.focus()}
+    clearInterval(externalSpotifyClipboardTimer);
+    externalSpotifyClipboardTimer=setInterval(async()=>{
+      try{
+        const result=await api('spotify-clipboard-lookup-status');
+        if(result.pending)return;
+        clearInterval(externalSpotifyClipboardTimer);externalSpotifyClipboardTimer=null;button.disabled=false;
+        spotifyWindow?.close();window.focus();
+        if(result.expired){toast('Verifica Spotify scaduta');return}
+        externalResolveDoubtfulTrack(trackId,result);
+        toast(result.found?'Spotify ID già in KR Desk - spostato nei presenti':'Spotify ID non presente - spostato nei da scaricare');
+      }catch(error){clearInterval(externalSpotifyClipboardTimer);externalSpotifyClipboardTimer=null;button.disabled=false;toast(error.message)}
+    },1200);
+  }catch(error){button.disabled=false;spotifyWindow?.close();toast(error.message)}
+}
+
+function externalResolveDoubtfulTrack(trackId,result){
+  if(!externalCompareResult?.items?.doubtful)return;
+  const index=externalCompareResult.items.doubtful.findIndex(item=>(item.matches||[]).some(match=>Number(match.id)===Number(trackId)));
+  if(index<0)return;
+  const item=externalCompareResult.items.doubtful.splice(index,1)[0];
+  item.spotify_id=result.spotify_id||item.spotify_id||'';
+  item.spotify_url=result.spotify_url||item.spotify_url||item.trackLink||'';
+  item.trackLink=item.spotify_url;
+  if(result.found&&result.track){
+    item.status='present';
+    item.reason='Spotify ID verificato in KR Desk';
+    item.matches=[result.track];
+    externalCompareResult.items.present.push(item);
+    externalCompareResult.present=Number(externalCompareResult.present||0)+1;
+  }else{
+    item.status='missing';
+    item.reason='Spotify ID non presente in KR Desk';
+    item.matches=[];
+    externalCompareResult.items.missing.push(item);
+    externalCompareResult.missing=Number(externalCompareResult.missing||0)+1;
+  }
+  externalCompareResult.doubtful=Math.max(0,Number(externalCompareResult.doubtful||0)-1);
+  externalStats(externalCompareResult);
+  externalRender(externalCompareFilter);
+}
+
+async function externalOpenSpotmate(payload){
+  const text=payload.spotify_url||payload.query||[payload.artist,payload.title].filter(Boolean).join(' ');
+  if(text&&navigator.clipboard)await navigator.clipboard.writeText(text);
+  window.open('https://spotmate.online/premium','vdjdesk_spotmate','noopener');
+  toast(text?'Copiato per SpotMate':'SpotMate aperto');
+}
+
+async function externalSearchKrDesk(query){
+  $('#library-search').value=query||'';
+  state.libraryExtraFilters={};
+  showView('library');
+  await loadTracks(true,false);
 }
 
 async function externalLoadFile(file){
@@ -69,6 +151,7 @@ async function externalLoadFile(file){
   $('#playlist-integrator-results').textContent=`Confronto ${items.length} righe con la Libreria Definitiva…`;
   const result=await post('playlist-external-compare',{items});
   externalRawItems=items;
+  externalImportedName=String(file.name||'playlist_importata').replace(/\.json$/i,'').trim()||'playlist_importata';
   externalCompareResult=result;
   externalFolderMatchResult=null;
   externalCompareSort={field:'position',direction:1};
@@ -79,6 +162,36 @@ async function externalLoadFile(file){
   await externalLoadFolders();
   externalRender('missing');
   toast(`JSON confrontato · ${result.missing} da scaricare · ${result.present} già presenti · ${result.doubtful} dubbi`);
+}
+
+async function externalCreatePlaylist(){
+  if(!externalRawItems.length){toast('Carica prima un JSON');return}
+  const name=window.prompt('Nome della playlist da creare',externalImportedName);
+  if(name===null||!name.trim())return;
+  const items=externalCompareResult
+    ? ['present','doubtful','missing'].flatMap(status=>externalCompareResult.items?.[status]||[]).sort((left,right)=>Number(left.position||0)-Number(right.position||0)).map(item=>({
+        ...(item.raw||{}),
+        spotify_id:item.spotify_id||'',
+        spotify_url:item.spotify_url||item.trackLink||'',
+        trackLink:item.trackLink||item.spotify_url||'',
+        artist:item.artist||'',
+        title:item.title||'',
+        album:item.album||'',
+        isrc:item.isrc||'',
+        duration:item.duration||'',
+      }))
+    : externalRawItems;
+  const button=$('#external-create-playlist');
+  button.disabled=true;button.textContent='Creo playlist...';
+  try{
+    const result=await post('playlist-external-create',{name:name.trim(),items});
+    toast(`Playlist creata: ${result.tracks} brani · ${result.missing} mancanti · ${result.doubtful} dubbi esclusi`);
+    showView('playlists');
+    await loadPlaylists();
+    $('#playlist-select').value=result.relative;
+    await openPlaylist(result.relative);
+  }catch(error){toast(error.message)}
+  finally{button.disabled=false;button.textContent='Crea in Playlist'}
 }
 
 async function externalLoadFolders(){
@@ -175,6 +288,16 @@ document.addEventListener('click',event=>{
     return;
   }
   if(event.target.closest('#external-export-missing'))externalExportMissing();
+  if(event.target.closest('#external-create-playlist'))externalCreatePlaylist();
   if(event.target.closest('#external-folder-match'))externalMatchFolder();
   if(event.target.closest('#external-apply-safe'))externalApplySafe();
+  const spotifyAcquire=event.target.closest('[data-external-spotify-acquire]');
+  if(spotifyAcquire){externalAcquireSpotifyId(spotifyAcquire);return}
+  const spotmate=event.target.closest('[data-external-spotmate]');
+  if(spotmate){
+    try{externalOpenSpotmate(JSON.parse(decodeURIComponent(spotmate.dataset.externalSpotmate||'%7B%7D')))}
+    catch(error){toast(error.message)}
+  }
+  const krSearch=event.target.closest('[data-external-kr-search]');
+  if(krSearch)externalSearchKrDesk(krSearch.dataset.externalKrSearch);
 });

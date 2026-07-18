@@ -14,7 +14,14 @@ final class SpotifyAudioFeaturesService
         $track = $statement->fetch();
         $spotifyId = trim((string) ($track['spotify_id'] ?? ''));
         if ($spotifyId === '') throw new RuntimeException('Spotify ID non disponibile per questo brano.');
+        if (!preg_match('/^[A-Za-z0-9]{22}$/', $spotifyId)) throw new RuntimeException('Spotify ID non valido: '.$spotifyId);
         $spotifyTrack ??= $this->apiRequest('/tracks/' . rawurlencode($spotifyId));
+        $artist=trim(implode(', ',array_column((array)($spotifyTrack['artists']??[]),'name')));
+        $title=trim((string)($spotifyTrack['name']??''));
+        if($artist!==''&&$title!==''){
+            $this->pdo->prepare("UPDATE tracks SET artist=?,title=?,normalized_artist=?,normalized_title=?,metadata_source='spotify',metadata_updated_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP WHERE id=?")
+                ->execute([$artist,$title,normalizeText($artist),normalizeTitle($title),$trackId]);
+        }
         $genre = $this->genreForTrack($spotifyTrack);
         $releaseDate = (string)($spotifyTrack['album']['release_date']??'');
         $year = preg_match('/^(\d{4})/', $releaseDate, $yearMatch) ? (int)$yearMatch[1] : null;

@@ -292,8 +292,10 @@ function seed(PDO $pdo): void
         'music_root' => 'D:\\Musica',
         'vdj_database' => 'D:\\VirtualDJ\\database.xml',
         'playlist_folder' => 'E:\\VirtualDJ\\MyLists',
-        'definitive_playlist_folder' => 'E:\\LIBRERIA_DEFINITIVA\\PLAYLIST',
-        'spotmate_download_folder' => 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Da_classificare',
+        'definitive_music_root' => 'E:\\LIBRERIA_MUSICALE',
+        'technical_library_root' => 'E:\\LIBRERIA_TECNICA',
+        'definitive_playlist_folder' => 'E:\\LIBRERIA_TECNICA\\PLAYLIST',
+        'spotmate_download_folder' => 'E:\\LIBRERIA_TECNICA\\01_INBOX\\Da_classificare',
         'duplicate_threshold' => '88',
         'recent_exclusion' => '20',
         'bpm_range' => '8',
@@ -381,31 +383,102 @@ function canonicalPath(string $path): string
     return rtrim($path, '\\');
 }
 
+function definitiveMusicRoot(): string
+{
+    return canonicalPath((string) setting('definitive_music_root', 'E:\\LIBRERIA_MUSICALE'));
+}
+
+function technicalLibraryRoot(): string
+{
+    return canonicalPath((string) setting('technical_library_root', 'E:\\LIBRERIA_TECNICA'));
+}
+
+function technicalAreaPath(string $relative): string
+{
+    $relative = trim(str_replace('/', '\\', $relative), '\\');
+    return technicalLibraryRoot() . ($relative !== '' ? '\\' . $relative : '');
+}
+
+function technicalAreaFolders(): array
+{
+    return ['01_INBOX', '02_DJ_TOOLS', '80_Karaoke', '90_Tematiche', 'PLAYLIST'];
+}
+
+function sqlPathStartsWith(string $column, string $root): string
+{
+    if (!preg_match('/^[A-Za-z0-9_.]+$/', $column)) {
+        throw new InvalidArgumentException('Colonna path non valida.');
+    }
+    $root = strtoupper(canonicalPath($root));
+    $pattern = db()->getAttribute(PDO::ATTR_DRIVER_NAME) === 'mysql'
+        ? str_replace('\\', '\\\\', $root) . '\\\\%'
+        : $root . '\\%';
+    return 'UPPER(' . $column . ') LIKE ' . db()->quote($pattern);
+}
+
+function definitiveMusicSqlCondition(string $column = 'file_path'): string
+{
+    $condition = sqlPathStartsWith($column, definitiveMusicRoot());
+    foreach (technicalAreaFolders() as $areaFolder) {
+        $condition .= ' AND NOT (' . sqlPathStartsWith($column, definitiveMusicRoot() . '\\' . $areaFolder) . ')';
+    }
+    return '(' . $condition . ')';
+}
+
+
+function configuredInboxSqlCondition(string $column = 'file_path'): string
+{
+    $path = canonicalPath((string) setting('spotmate_download_folder', technicalAreaPath('01_INBOX\Da_classificare')));
+    if ($path === '') $path = technicalAreaPath('01_INBOX\Da_classificare');
+    return sqlPathStartsWith($column, $path);
+}
+
+function workbenchLibrarySqlCondition(string $column = 'file_path'): string
+{
+    return '(' . definitiveMusicSqlCondition($column) . ' OR ' . configuredInboxSqlCondition($column) . ')';
+}
+
+function trackedLibrarySqlCondition(string $column = 'file_path'): string
+{
+    return '(' . sqlPathStartsWith($column, definitiveMusicRoot()) . ' OR ' . sqlPathStartsWith($column, technicalLibraryRoot()) . ')';
+}
+
+function technicalLibrarySqlCondition(string $column = 'file_path'): string
+{
+    return sqlPathStartsWith($column, technicalLibraryRoot());
+}
+
 function trackTaxonomyFromPath(string $path): array
 {
     $path = canonicalPath($path);
     $parts = explode('\\', $path);
-    $rootIndex = array_search('LIBRERIA_DEFINITIVA', $parts, true);
-    $rootFolder = $rootIndex === false ? '' : (string)($parts[$rootIndex + 1] ?? '');
-    $childFolder = $rootIndex === false ? '' : (string)($parts[$rootIndex + 2] ?? '');
+    $musicParts = explode('\\', definitiveMusicRoot());
+    $technicalParts = explode('\\', technicalLibraryRoot());
+    $upperParts = array_map('strtoupper', $parts);
+    $upperMusicParts = array_map('strtoupper', $musicParts);
+    $upperTechnicalParts = array_map('strtoupper', $technicalParts);
+    $isMusicRoot = array_slice($upperParts, 0, count($upperMusicParts)) === $upperMusicParts;
+    $isTechnicalRoot = array_slice($upperParts, 0, count($upperTechnicalParts)) === $upperTechnicalParts;
+    $rootOffset = $isMusicRoot ? count($musicParts) : ($isTechnicalRoot ? count($technicalParts) : 0);
+    $rootFolder = $rootOffset > 0 ? (string)($parts[$rootOffset] ?? '') : '';
+    $childFolder = $rootOffset > 0 ? (string)($parts[$rootOffset + 1] ?? '') : '';
     $macroMap = [
         '10_Latin' => 'Latin',
         '20_Urban' => 'Urban',
         '30_Commerciale' => 'Commerciale',
         '40_Rock_PopRock' => 'Rock_PopRock',
         '50_Italiana' => 'Italiana',
-        '80_Karaoke' => 'Karaoke',
-        '90_Tematiche' => 'Tematiche',
     ];
-    $areaMap = [
-        '01_INBOX' => 'INBOX',
-        '02_DJ_TOOLS' => 'DJ_TOOLS',
-        'PLAYLIST' => 'PLAYLIST',
-        '80_Karaoke' => 'KARAOKE',
-        '90_Tematiche' => 'TEMATICHE',
-    ];
+    $areaMap = array_fill_keys(technicalAreaFolders(), null);
+    if ($isTechnicalRoot) {
+        return [
+            'archive_area' => $rootFolder !== '' ? strtoupper($rootFolder) : 'TECNICA',
+            'macro_genre' => '',
+            'folder_genre' => $childFolder,
+        ];
+    }
     return [
-        'archive_area' => $areaMap[$rootFolder] ?? ($rootFolder !== '' ? 'LIBRERIA' : ''),
+        'archive_area' => array_key_exists($rootFolder, $areaMap) ? strtoupper($rootFolder) : ($rootFolder !== '' ? 'LIBRERIA' : ''),
         'macro_genre' => $macroMap[$rootFolder] ?? '',
         'folder_genre' => $childFolder,
     ];

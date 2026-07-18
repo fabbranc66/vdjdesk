@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#080b10"><title>KR DJ Desk</title>
-  <link rel="stylesheet" href="assets/app.css?v=22">
+  <link rel="stylesheet" href="assets/app.css?v=38">
   <link rel="stylesheet" href="assets/automix-suggestions.css?v=6">
-  <link rel="stylesheet" href="assets/spotify-features.css?v=20">
+  <link rel="stylesheet" href="assets/spotify-features.css?v=22">
   <link rel="stylesheet" href="assets/bulk-tags.css?v=1">
-  <link rel="stylesheet" href="assets/playlist-builder.css?v=6">
+  <link rel="stylesheet" href="assets/playlist-builder.css?v=7">
   <link rel="stylesheet" href="assets/library-sort.css?v=2">
   <link rel="stylesheet" href="assets/formula-settings.css?v=3">
   <link rel="stylesheet" href="assets/playlists.css?v=6">
   <link rel="stylesheet" href="assets/playlists-simple.css?v=4">
-  <link rel="stylesheet" href="assets/playlist-integrator.css?v=3">
+  <link rel="stylesheet" href="assets/playlist-integrator.css?v=4">
   <link rel="stylesheet" href="assets/quiz.css?v=5">
 </head>
 <body>
@@ -104,9 +104,9 @@
       <div class="search-toolbar panel"><div class="big-search"><span>⌕</span><input id="library-search" placeholder="Cerca artista o titolo…" autocomplete="off"></div><button class="button primary" id="search-button">Cerca</button></div>
       <div class="library-simple-filters">
         <label><span>VEDI CARTELLA · INCLUSE SOTTOCARTELLE</span><select id="filter-folder"><option value="">Tutta la libreria</option></select></label>
-        <details><summary>Filtri avanzati</summary><div class="filter-row"><select id="filter-macro-genre"><option value="">Macrogenere: tutti</option></select><select id="filter-folder-genre"><option value="">Genere cartella: tutti</option></select><input id="filter-bpm" type="number" placeholder="BPM"><input id="filter-key" placeholder="Key / Camelot"><input id="filter-genre" placeholder="Microgenere/tag"><input id="filter-year" type="number" placeholder="Anno"><select id="filter-quality"><option value="">Qualità: tutte</option><option value="below">Audio sotto standard</option><option value="standard">Audio standard o superiore</option><option value="video">Video</option></select><button class="button ghost" id="clear-filters">Azzera filtri</button></div></details>
+        <details><summary>Filtri avanzati</summary><div class="filter-row"><select id="filter-macro-genre" multiple size="1"><option value="">Mac</option></select><select id="filter-folder-genre" multiple size="1"><option value="">Gen</option></select><input id="filter-bpm" type="number" placeholder="BPM"><select id="filter-key" multiple size="1"><option value="">Key</option></select><select id="filter-genre" multiple size="1"><option value="">Mic</option></select><input id="filter-year" type="number" placeholder="Anno"><button class="button ghost" id="clear-filters">Azzera filtri</button></div></details>
       </div>
-      <div class="section-head"><div><span class="kicker">LIBRERIA LOCALE</span><h2 id="results-title">Tutti i brani</h2></div><div class="library-heading-actions"><button id="expand-folder-tracks" class="button accent hidden">Espandi tutta la cartella</button><span id="results-count" class="count-pill">0 risultati</span><button class="button ghost open-bulk-tags">Tag globale</button><button class="button ghost sync-vdj-years">Anno VDJ → KR</button><button id="align-filtered-vdj-tags" class="button ghost"><span class="vdj-align-bulk-icon">A</span> Allinea nomi VDJ</button><button id="send-library-to-spotify" class="button accent">Porta in Spotify → VDJ</button></div></div>
+      <div class="section-head"><div><span class="kicker">LIBRERIA LOCALE</span><h2 id="results-title">Tutti i brani</h2></div><div class="library-heading-actions"><button id="expand-folder-tracks" class="button accent hidden">Espandi tutti i risultati</button><span id="results-count" class="count-pill">0 risultati</span><button class="button ghost open-bulk-tags">Tag globale</button><button class="button ghost sync-vdj-years">Anno VDJ → KR</button><button id="align-filtered-vdj-tags" class="button ghost"><span class="vdj-align-bulk-icon">A</span> Allinea nomi VDJ</button><button id="send-library-to-spotify" class="button accent">Porta in Spotify → VDJ</button></div></div>
       <div id="library-sort-header" class="library-sort-header"><button data-sort="artist">Artista / Titolo</button><button data-sort="bpm">BPM</button><button data-sort="key">Key</button><button class="hide-mobile" data-sort="duration">Durata</button><div class="hide-mobile"><button data-sort="format">Formato</button><button data-sort="bitrate">Bitrate</button></div><div class="hide-tablet hide-mobile"><button data-sort="genre">Genere</button><button data-sort="year">Anno</button></div><button class="hide-mobile" data-sort="tags">Tag</button><span></span></div>
       <div id="library-results" class="track-list"></div>
       <div class="library-load-actions"><button id="load-more-tracks" class="button ghost load-more hidden">Carica altri brani</button></div>
@@ -114,6 +114,21 @@
 
     <section class="view" id="view-suggestions">
       <div class="suggestion-control panel"><div><span class="kicker">BRANO DI PARTENZA</span><select id="current-track-select"></select></div><div class="segmented" id="suggestion-modes"><button class="active" data-mode="same">Stessa vibe</button><button data-mode="up">Più energia</button><button data-mode="down">Meno energia</button><button data-mode="genre">Cambio genere</button><button data-mode="sing">Canto</button><button data-mode="recover">Recupero</button></div></div>
+      <div class="library-simple-filters suggestion-filters">
+        <details open>
+          <summary>Filtri avanzati</summary>
+          <div class="filter-row">
+            <select id="suggestion-macro-genre" multiple size="1"><option value="">Mac</option></select>
+            <select id="suggestion-genre" multiple size="1"><option value="">Mic</option></select>
+            <select id="suggestion-key" multiple size="1"><option value="">Key</option></select>
+            <input id="suggestion-tag" placeholder="Tag">
+            <input id="suggestion-bpm-min" type="number" placeholder="BPM min">
+            <input id="suggestion-bpm-max" type="number" placeholder="BPM max">
+            <input id="suggestion-year" type="number" placeholder="Anno">
+            <button type="button" class="button ghost" id="clear-suggestion-filters">Azzera filtri</button>
+          </div>
+        </details>
+      </div>
       <div class="section-head"><div><span class="kicker">MOTORE DI COMPATIBILITÀ</span><h2>Le prossime mosse</h2></div></div>
       <div id="suggestions-list" class="suggestions-list empty-state">Scegli un brano per generare i suggerimenti.</div>
     </section>
@@ -125,11 +140,11 @@
       </div>
       <article class="panel playlist-integrator" id="playlist-integrator">
         <div class="playlist-integrator-head">
-          <div><span class="kicker">INTEGRA LIBRERIA</span><h2>JSON Spotify / Soundiiz</h2><p>Analizza una lista esterna senza file fisici: esclude i brani già presenti in <code>E:\LIBRERIA_DEFINITIVA</code> ed esporta solo i mancanti.</p></div>
+          <div><span class="kicker">INTEGRA LIBRERIA</span><h2>JSON Spotify / Soundiiz</h2><p>Analizza una lista esterna senza file fisici: esclude i brani già presenti in <code>E:\LIBRERIA_MUSICALE</code> ed esporta solo i mancanti.</p></div>
           <label class="button accent playlist-json-button">Carica JSON<input id="playlist-json-input" type="file" accept=".json,application/json" hidden></label>
         </div>
         <div class="playlist-integrator-stats" id="playlist-integrator-stats"><span>Totale: --</span><span class="ok">Già presenti: --</span><span class="warn">Dubbi: --</span><span class="missing">Da scaricare: --</span></div>
-        <div class="playlist-integrator-actions hidden" id="playlist-integrator-actions"><button type="button" class="button primary" data-external-filter="missing">Mostra da scaricare</button><button type="button" class="button ghost" data-external-filter="doubtful">Mostra dubbi</button><button type="button" class="button ghost" data-external-filter="present">Mostra presenti</button><button type="button" class="button accent" id="external-export-missing">Esporta JSON mancanti</button></div>
+        <div class="playlist-integrator-actions hidden" id="playlist-integrator-actions"><button type="button" class="button primary" data-external-filter="missing">Mostra da scaricare</button><button type="button" class="button ghost" data-external-filter="doubtful">Mostra dubbi</button><button type="button" class="button ghost" data-external-filter="present">Mostra presenti</button><button type="button" class="button accent" id="external-export-missing">Esporta JSON mancanti</button><button type="button" class="button primary" id="external-create-playlist">Crea in Playlist</button></div>
         <div class="playlist-folder-bridge hidden" id="playlist-folder-bridge"><label>Cartella scaricata da confrontare<select id="external-folder-select"><option value="">Scegli cartella…</option></select></label><button type="button" class="button ghost" id="external-folder-match">Verifica congruenza</button><button type="button" class="button accent" id="external-apply-safe" disabled>Applica metadati sicuri</button></div>
         <div id="playlist-folder-match-results" class="playlist-integrator-results hidden"></div>
         <div id="playlist-integrator-results" class="playlist-integrator-results empty-state">Carica un JSON per iniziare.</div>
@@ -167,7 +182,7 @@
 
     <section class="view" id="view-playlists">
       <div class="search-toolbar panel"><div class="big-search"><span>⌕</span><input id="playlist-search" placeholder="Cerca artista o titolo…" autocomplete="off"></div><button class="button primary" id="playlist-search-button">Cerca playlist</button><button class="button accent" id="playlist-search-library">Cerca in libreria E</button></div>
-      <div class="library-simple-filters" id="playlist-filters"><label><span>PLAYLIST VIRTUALDJ</span><select id="playlist-select"><option value="">Lettura playlist…</option></select></label><details><summary>Filtri avanzati</summary><div class="filter-row"><select id="playlist-macro-genre"><option value="">Macrogenere: tutti</option></select><select id="playlist-folder-genre"><option value="">Genere cartella: tutti</option></select><input id="playlist-bpm" type="number" placeholder="BPM"><input id="playlist-key" placeholder="Key / Camelot"><input id="playlist-genre" placeholder="Microgenere/tag"><input id="playlist-year" type="number" placeholder="Anno"><select id="playlist-quality"><option value="">Qualità: tutte</option><option value="below">Audio sotto standard</option><option value="standard">Audio standard o superiore</option><option value="video">Video</option></select><button class="button ghost" id="playlist-clear">Azzera filtri</button></div></details></div>
+      <div class="library-simple-filters" id="playlist-filters"><label><span>PLAYLIST VIRTUALDJ</span><select id="playlist-select"><option value="">Lettura playlist…</option></select></label><details><summary>Filtri avanzati</summary><div class="filter-row"><select id="playlist-macro-genre" multiple size="1"><option value="">Mac</option></select><select id="playlist-folder-genre" multiple size="1"><option value="">Gen</option></select><input id="playlist-bpm" type="number" placeholder="BPM"><select id="playlist-key" multiple size="1"><option value="">Key</option></select><select id="playlist-genre" multiple size="1"><option value="">Mic</option></select><input id="playlist-year" type="number" placeholder="Anno"><button class="button ghost" id="playlist-clear">Azzera filtri</button></div></details></div>
       <div class="section-head"><div><span class="kicker">PLAYLIST VIRTUALDJ</span><h2 id="playlist-title">Playlist</h2><p class="playlist-root" id="playlist-root">Lettura cartella…</p></div><div class="library-heading-actions"><span id="playlist-count" class="count-pill">0 brani</span><button type="button" class="button ghost open-bulk-tags">Tag globale</button><button type="button" class="button ghost sync-vdj-years">Anno VDJ → KR</button><button type="button" class="button ghost" id="align-filtered-playlist-vdj-tags"><span class="vdj-align-bulk-icon">A</span> Allinea nomi VDJ</button><button type="button" class="button ghost" id="playlist-force-spotify">Forza ID lista</button><button type="button" class="button accent" id="playlist-identify-spotify">Trova Spotify ID</button><button type="button" class="button primary" id="playlist-bulk-spotify">Metriche Spotify</button><button type="button" class="button accent" id="playlist-send-to-spotify">Porta in Spotify → VDJ</button><button type="button" class="button ghost" onclick="loadPlaylists()">Aggiorna</button></div></div>
       <div class="playlist-editor-toolbar panel"><button class="button accent" id="playlist-complete">＋ Completa playlist</button><button type="button" class="button primary playlist-search-library-action">Cerca in libreria E</button><button class="button ghost" id="playlist-original">Ordine originale</button><button class="button ghost" id="playlist-bpm-up">BPM ↑</button><button class="button ghost" id="playlist-bpm-down">BPM ↓</button><button class="button accent" id="playlist-camelot-strict">Camelot Strict</button><button class="button ghost" id="playlist-camelot-soft">Camelot Soft</button><button class="button ghost" id="playlist-genre-bpm">Genere + BPM</button><span>Trascina le righe per l’ordine manuale</span><button class="button primary" id="playlist-save">Salva playlist VDJ</button></div>
       <div id="playlist-camelot-debug" class="camelot-debug"></div>
@@ -187,8 +202,8 @@
           <label>Cartella musica da visualizzare<select name="music_root" id="music-root-select"><option value="">Rilevamento cartelle…</option></select></label>
           <label>Database VirtualDJ XML<input name="vdj_database"></label>
           <label>Cartella playlist VirtualDJ<input name="playlist_folder"></label>
-          <label>Playlist libreria definitiva<input name="definitive_playlist_folder"></label>
-          <label>Cartella download SpotMate<input name="spotmate_download_folder" placeholder="E:\LIBRERIA_DEFINITIVA\01_INBOX\Da_classificare"></label>
+          <label>Playlist libreria tecnica<input name="definitive_playlist_folder"></label>
+          <label>Cartella download SpotMate<input name="spotmate_download_folder" placeholder="E:\LIBRERIA_TECNICA\01_INBOX\Da_classificare"></label>
           <label>Porta VirtualDJ Network Control<input name="vdj_network_port" type="number" min="1" max="65535"></label>
           <div class="button-row"><button type="button" class="button primary" id="sync-all-vdj">Sincronizza tutti i DB</button><button type="button" class="button accent" id="reconcile-vdj">Riconcilia database</button><button type="button" class="button accent" id="import-vdj">Importa solo principale</button><button type="button" class="button ghost" id="scan-music">Scansiona musica</button><button type="button" class="button primary publish-session-json" id="publish-session-json">Genera + carica hosting</button></div>
           <p class="form-note">Network Control usa <code>127.0.0.1:9665</code> senza autenticazione. La sincronizzazione non scrive nei database VirtualDJ.</p>
@@ -234,21 +249,22 @@
 </div>
 
 <dialog id="track-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div id="track-editor"></div></dialog>
+<dialog id="move-folder-dialog"><form method="dialog"><button class="dialog-close">x</button></form><div class="move-folder-editor"><span class="kicker">ARCHIVIA IN LIBRERIA</span><h2>Sposta in cartella musicale</h2><p id="move-folder-track" class="form-note"></p><label>Destinazione<select id="move-folder-select"><option value="">Caricamento cartelle...</option></select></label><button type="button" class="button primary" id="confirm-move-folder">Sposta file</button></div></dialog>
 <dialog id="bulk-tag-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="bulk-tag-editor"><span class="kicker">LISTA FILTRATA VISIBILE</span><h2>Tag globale</h2><p id="bulk-tag-count">0 brani selezionati</p><p class="form-note">Primo clic: <b class="bulk-add-label">verde, aggiungi</b> · secondo clic: <b class="bulk-remove-label">rosso, rimuovi</b> · terzo clic: annulla.</p><div id="bulk-tag-picker" class="tag-picker"></div><button type="button" class="button primary" id="apply-bulk-tags">Applica ai brani visibili</button></div></dialog>
-<dialog id="playlist-builder-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="playlist-builder"><span class="kicker">COMPLETA PLAYLIST</span><h2>Aggiungi brani dalla libreria</h2><div class="playlist-builder-grid"><label>Numero brani<input id="builder-limit" type="number" min="1" max="100" value="10"></label><label>Macrogenere<select id="builder-macro-genre"><option value="">Qualsiasi macro</option></select></label><label>Genere cartella<select id="builder-folder-genre"><option value="">Qualsiasi cartella</option></select></label><label>Microgenere<input id="builder-genre" placeholder="es. salsa dura"></label><label>Tag<select id="builder-tag"><option value="">Qualsiasi tag</option></select></label><label>BPM minimo<input id="builder-bpm-min" type="number"></label><label>BPM massimo<input id="builder-bpm-max" type="number"></label><label>Camelot compatibile<input id="builder-camelot" placeholder="es. 8A"></label><label>Energia minima<select id="builder-energy"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Ballabilità minima<select id="builder-dance"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Popolarità minima<input id="builder-popularity" type="number" min="0" max="100"></label><label>Anno da<input id="builder-year-min" type="number"></label><label>Anno a<input id="builder-year-max" type="number"></label><label>Inserisci<select id="builder-position"><option value="end">In fondo</option></select></label></div><label class="builder-quality"><input id="builder-mp3-320" type="checkbox" checked> Solo MP3 320 kbps o superiore</label><div class="button-row"><button type="button" class="button accent" id="builder-search">Trova candidati</button><button type="button" class="button primary" id="builder-add" disabled>Aggiungi selezionati</button></div><div id="builder-results" class="builder-results"><div class="empty-state">Imposta i criteri e cerca.</div></div></div></dialog>
+<dialog id="playlist-builder-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="playlist-builder"><span class="kicker">COMPLETA PLAYLIST</span><h2>Aggiungi brani dalla libreria</h2><div class="playlist-builder-grid"><label>Numero brani<input id="builder-limit" type="number" min="1" max="100" value="10"></label><label>Macrogenere<select id="builder-macro-genre" multiple size="5"><option value="">Qualsiasi macro</option></select></label><label>Genere cartella<select id="builder-folder-genre" multiple size="5"><option value="">Qualsiasi cartella</option></select></label><label>Microgenere<select id="builder-genre" multiple size="6"><option value="">Qualsiasi microgenere</option></select></label><label>Tag<select id="builder-tag" multiple size="6"><option value="">Qualsiasi tag</option></select></label><label>BPM minimo<input id="builder-bpm-min" type="number"></label><label>BPM massimo<input id="builder-bpm-max" type="number"></label><label>Camelot compatibile<select id="builder-camelot" multiple size="5"><option value="">Qualsiasi Camelot</option></select></label><label>Energia minima<select id="builder-energy" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Ballabilità minima<select id="builder-dance" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Popolarità minima<input id="builder-popularity" type="number" min="0" max="100"></label><label>Anno da<input id="builder-year-min" type="number"></label><label>Anno a<input id="builder-year-max" type="number"></label><label>Inserisci<select id="builder-position"><option value="end">In fondo</option></select></label></div><label class="builder-quality"><input id="builder-mp3-320" type="checkbox" checked> Solo MP3 320 kbps o superiore</label><div class="button-row"><button type="button" class="button accent" id="builder-search">Trova candidati</button><button type="button" class="button primary" id="builder-add" disabled>Aggiungi selezionati</button></div><div id="builder-results" class="builder-results"><div class="empty-state">Imposta i criteri e cerca.</div></div></div></dialog>
 <div id="app-toast" class="toast"></div>
-  <script src="assets/app.js?v=25"></script>
-  <script src="assets/library-quality.js?v=3"></script>
+  <script src="assets/app.js?v=53"></script>
+  <script src="assets/library-quality.js?v=4"></script>
   <script src="assets/spotify-export-filter.js?v=7"></script>
   <script src="assets/library-sort.js?v=2"></script>
   <script src="assets/formula-settings.js?v=3"></script>
   <script src="assets/analysis.js?v=2"></script>
-  <script src="assets/playlists.js?v=25"></script>
-  <script src="assets/playlist-integrator.js?v=6"></script>
-  <script src="assets/automix-suggestions.js?v=17"></script>
-  <script src="assets/spotify-features.js?v=50"></script>
+  <script src="assets/playlists.js?v=33"></script>
+  <script src="assets/playlist-integrator.js?v=12"></script>
+  <script src="assets/automix-suggestions.js?v=18"></script>
+  <script src="assets/spotify-features.js?v=65"></script>
   <script src="assets/bulk-tags.js?v=3"></script>
   <script src="assets/vdj-years.js?v=4"></script>
-  <script src="assets/playlist-builder.js?v=16"></script>
+  <script src="assets/playlist-builder.js?v=18"></script>
   <script src="assets/quiz-control.js?v=14"></script>
 </body></html>

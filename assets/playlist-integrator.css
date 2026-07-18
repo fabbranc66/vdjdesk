@@ -28,8 +28,15 @@
 .external-row.unmatched{border-color:rgba(255,122,144,.20);opacity:.86}
 .external-subtitle{margin:10px 0 2px;font-size:15px;color:#fff}
 .external-main{display:grid;gap:4px;min-width:0}
+.external-title-line{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
 .external-main b{font-size:16px;color:#fff}
 .external-main small{color:var(--muted)}
+.external-title-actions{display:inline-flex;align-items:center;gap:4px}
+.external-title-dot{display:inline-grid;place-items:center;width:18px;height:18px;border:1px solid rgba(255,255,255,.16);border-radius:50%;background:#111b28;color:#dce8f7;font-size:9px;font-weight:900;line-height:1;text-decoration:none;cursor:pointer}
+.external-title-dot.spotify{border-color:#1db954;color:#88ffc1}
+.external-title-dot.spotmate{border-color:#7aa8ff;color:#bcd3ff}
+.external-title-dot.kr{border-color:#ffd166;color:#ffe3a3}
+.external-title-dot:hover{background:#203127;color:#fff;transform:translateY(-1px)}
 .external-match{font-size:12px;word-break:break-all}
 .external-meta{display:flex;gap:6px;flex-wrap:wrap}
 .external-meta span{font-size:11px;border:1px solid rgba(255,255,255,.1);border-radius:999px;padding:3px 7px;color:#b7c5d8}

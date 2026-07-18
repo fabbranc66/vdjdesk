@@ -121,12 +121,52 @@ final class VirtualDjControlService
         return ['ok'=>true,'track_id'=>$trackId,'query'=>$query,'title'=>trim($track['artist'] . ' - ' . $track['title']),'start_at'=>round($startAt,1)];
     }
 
+    public function prelistenPath(string $path): array
+    {
+        $path = canonicalPath($path);
+        if ($path === '' || !is_file($path) || !preg_match('/^[A-Z]:\\\\/i', $path)) {
+            throw new RuntimeException('File non disponibile per il preascolto.');
+        }
+        $query = $this->scriptValue($path);
+        if ($query === '') throw new RuntimeException('Percorso file non disponibile.');
+        $script = 'prelisten_stop & search "' . $query . '" & browser_window "songs" & browser_scroll "top"';
+        if (strtolower($this->request('execute', $script)) !== 'true') {
+            throw new RuntimeException('VirtualDJ non ha selezionato il file.');
+        }
+        usleep(500000);
+        $selectedPath = canonicalPath($this->request('query', 'get_browsed_filepath'));
+        if (strcasecmp($selectedPath, $path) !== 0) {
+            throw new RuntimeException('VirtualDJ ha selezionato un file diverso dal percorso richiesto.');
+        }
+        if (strtolower($this->request('execute', 'prelisten')) !== 'true') {
+            throw new RuntimeException('VirtualDJ non ha avviato il preascolto.');
+        }
+        return ['ok'=>true,'path'=>$path,'selected_path'=>$selectedPath,'title'=>pathinfo($path,PATHINFO_FILENAME),'start_at'=>0];
+    }
+
     public function stopPrelisten(): array
     {
         if (strtolower($this->request('execute', 'prelisten_stop')) !== 'true') {
             throw new RuntimeException('VirtualDJ non ha fermato il preascolto.');
         }
         return ['ok'=>true,'stopped'=>true];
+    }
+
+    public function releasePrelistenToPath(string $path): array
+    {
+        $path=canonicalPath($path);
+        if($path===''||!is_file($path)||!preg_match('/^[A-Z]:\\\\/i',$path))throw new RuntimeException('File di rilascio VDJ non disponibile.');
+        $query=$this->scriptValue($path);
+        $script='prelisten_stop & search "'.$query.'" & browser_window "songs" & browser_scroll "top"';
+        if(strtolower($this->request('execute',$script))!=='true')throw new RuntimeException('VirtualDJ non ha selezionato il file di rilascio.');
+        usleep(450000);
+        $selectedPath=canonicalPath($this->request('query','get_browsed_filepath'));
+        if(strcasecmp($selectedPath,$path)!==0)throw new RuntimeException('VirtualDJ ha selezionato un file di rilascio diverso.');
+        if(strtolower($this->request('execute','prelisten & prelisten_pos 100%'))!=='true')throw new RuntimeException('VirtualDJ non ha trasferito il preascolto.');
+        usleep(250000);
+        $this->request('execute','prelisten_stop');
+        usleep(600000);
+        return ['ok'=>true,'path'=>$path];
     }
 
     public function markTrackAsNew(int $trackId): bool
@@ -160,7 +200,7 @@ final class VirtualDjControlService
     private function moveToDeletionFolder(string $source): string
     {
         if (!is_file($source)) throw new RuntimeException('Il file sorgente non esiste più.');
-        $destination = 'E:\\LIBRERIA_DEFINITIVA\\01_INBOX\\Da_cancellare';
+        $destination = technicalAreaPath('01_INBOX\\Da_cancellare');
         if (!is_dir($destination)) throw new RuntimeException('Cartella Da_cancellare non trovata.');
         if (str_starts_with(strtoupper($source), strtoupper($destination.'\\'))) throw new RuntimeException('Il file è già nella cartella Da_cancellare.');
         $target = $destination . '\\' . basename($source);

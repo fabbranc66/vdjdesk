@@ -1,10 +1,10 @@
-# Problemi architetturali KR Desk
+﻿# Problemi architetturali KR Desk
 
 Data mappatura: 2026-07-13.
 
 ## Sintesi
 
-Il problema principale non è una singola funzione, ma la convivenza di funzioni Studio pesanti e funzioni Regia live nello stesso `api.php`, nello stesso `index.php` e nella stessa tabella `settings`.
+Il problema principale non Ã¨ una singola funzione, ma la convivenza di funzioni Studio pesanti e funzioni Regia live nello stesso `api.php`, nello stesso `index.php` e nella stessa tabella `settings`.
 
 Questo rende facile portare in hosting cose che dovrebbero restare locali.
 
@@ -23,7 +23,7 @@ Questo rende facile portare in hosting cose che dovrebbero restare locali.
 - doppioni;
 - impostazioni token/API.
 
-Rischio: una pagina hosting può chiamare per errore endpoint Studio, o una modifica Studio può rompere Regia.
+Rischio: una pagina hosting puÃ² chiamare per errore endpoint Studio, o una modifica Studio puÃ² rompere Regia.
 
 ### 2. Bootstrap troppo carico
 
@@ -57,7 +57,7 @@ Rischio: in hosting possono finire configurazioni locali, path e credenziali non
 
 Il codice contiene funzioni `remoteApiFetch`, `remoteApiPassthrough` e `shouldProxyToHosting`.
 
-Rischio: doppia verità fra locale e hosting, specialmente per richieste/quiz/stato live.
+Rischio: doppia veritÃ  fra locale e hosting, specialmente per richieste/quiz/stato live.
 
 Nota: non va rimosso senza decisione architetturale esplicita, ma va isolato e documentato.
 
@@ -65,13 +65,13 @@ Nota: non va rimosso senza decisione architetturale esplicita, ma va isolato e d
 
 Endpoint come `public-search` oggi usano `LibraryService`.
 
-Rischio: se usato in hosting, richiede libreria completa nel DB hosting; questo viola la roadmap. La soluzione corretta è JSON sessione leggero.
+Rischio: se usato in hosting, richiede libreria completa nel DB hosting; questo viola la roadmap. La soluzione corretta Ã¨ JSON sessione leggero.
 
 ### 6. Dipendenze Windows/locali
 
 Dipendenze locali rilevate:
 
-- `E:\LIBRERIA_DEFINITIVA`
+- `E:\LIBRERIA_MUSICALE`
 - `E:\VirtualDJ\database.xml`
 - `USERPROFILE`
 - `LOCALAPPDATA`
@@ -98,7 +98,7 @@ Rischio: funzione fragile, accettabile in Studio locale ma inadatta alla Regia h
 
 ### 9. Playlist ancora troppo potente rispetto alla roadmap
 
-La pagina playlist include già:
+La pagina playlist include giÃ :
 
 - candidati;
 - ricerca libreria;
@@ -137,7 +137,7 @@ Rischio: catalogazione e archiviazione restano operative ma non governate da sta
 ## Cose da non fare ora
 
 - Non refactoring massivo di `api.php` prima di avere JSON sessione.
-- Non spostare playlist avanzate in priorità alta.
+- Non spostare playlist avanzate in prioritÃ  alta.
 - Non mettere libreria completa in hosting.
 - Non spostare file automaticamente.
 - Non usare Beatport come fonte universale.
@@ -156,7 +156,7 @@ La Regia hosting dovrebbe avere solo:
 - log essenziali;
 - JSON sessione.
 
-Ogni presenza di queste cose in hosting è un rischio:
+Ogni presenza di queste cose in hosting Ã¨ un rischio:
 
 - `tracks` completa;
 - `track_sources`;
@@ -172,4 +172,4 @@ Ogni presenza di queste cose in hosting è un rischio:
 
 L'app funziona, ma va messa in sicurezza architetturale prima di aggiungere altra automazione.
 
-La priorità non è aggiungere feature: è separare chiaramente il contratto dati fra Studio e Regia.
+La prioritÃ  non Ã¨ aggiungere feature: Ã¨ separare chiaramente il contratto dati fra Studio e Regia.

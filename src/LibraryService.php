@@ -34,7 +34,7 @@ final class LibraryService
 
     private function searchConditions(array $filters): array
     {
-        $where = ["UPPER(file_path) LIKE 'E:%'"];
+        $where = [workbenchLibrarySqlCondition()];
         if (appUsesLocalFiles()) {
             array_unshift($where, "file_exists = 1");
         }
@@ -60,11 +60,26 @@ final class LibraryService
         $artistFilter = trim((string) ($filters['artist'] ?? ''));
         $titleFilter = trim((string) ($filters['title'] ?? ''));
         foreach (['archive_area','macro_genre','folder_genre'] as $taxonomyFilter) {
-            $value = trim((string)($filters[$taxonomyFilter] ?? ''));
-            if ($value !== '') {
-                $where[] = $taxonomyFilter . ' = :' . $taxonomyFilter;
-                $params[':' . $taxonomyFilter] = $value;
+            $values = $this->filterValues($filters, $taxonomyFilter);
+            if ($values) {
+                $placeholders = [];
+                foreach ($values as $index => $value) {
+                    $key = ':' . $taxonomyFilter . '_' . $index;
+                    $placeholders[] = $key;
+                    $params[$key] = $value;
+                }
+                $where[] = $taxonomyFilter . ' IN (' . implode(',', $placeholders) . ')';
             }
+        }
+        $genres = $this->filterValues($filters, 'genre');
+        if ($genres) {
+            $placeholders = [];
+            foreach ($genres as $index => $genre) {
+                $key = ':genre_' . $index;
+                $placeholders[] = $key;
+                $params[$key] = mb_strtolower($genre, 'UTF-8');
+            }
+            $where[] = 'LOWER(TRIM(genre)) IN (' . implode(',', $placeholders) . ')';
         }
         if ($artistFilter !== '' || $titleFilter !== '') {
             if ($artistFilter !== '') {
@@ -76,21 +91,21 @@ final class LibraryService
                 $params[':title_norm'] = normalizeTitle($titleFilter);
             }
         }
-        foreach (['genre','camelot','folder'] as $field) {
+        foreach (['camelot','folder'] as $field) {
             if (!empty($filters[$field])) {
                 $where[] = "$field LIKE :$field";
                 $params[":$field"] = '%' . $filters[$field] . '%';
             }
         }
-        if (!empty($filters['musical_key'])) {
-            $keyFilter=trim((string)$filters['musical_key']);
-            if(preg_match('/^(?:[1-9]|1[0-2])[AB]$/i',$keyFilter)){
-                $where[] = 'UPPER(camelot) = :key_filter';
-                $params[':key_filter'] = strtoupper($keyFilter);
-            }else{
-                $where[] = 'musical_key LIKE :key_filter';
-                $params[':key_filter'] = '%' . $keyFilter . '%';
+        $keyFilters = $this->filterValues($filters, 'musical_key');
+        if ($keyFilters) {
+            $placeholders = [];
+            foreach ($keyFilters as $index => $keyFilter) {
+                $key = ':key_filter_' . $index;
+                $placeholders[] = $key;
+                $params[$key] = strtoupper($keyFilter);
             }
+            $where[] = '(UPPER(TRIM(camelot)) IN (' . implode(',', $placeholders) . ') OR UPPER(TRIM(musical_key)) IN (' . implode(',', $placeholders) . '))';
         }
         if (!empty($filters['folder_root'])) {
             $root = rtrim((string) $filters['folder_root'], '\\');
@@ -117,13 +132,13 @@ final class LibraryService
             else $where[]="($audio AND NOT $standard)";
         }
         if (($filters['spotify_metrics']??'') === 'loaded') {
-            $where[] = "spotify_id<>'' AND spotify_features_updated_at IS NOT NULL AND spotify_features_status IN ('complete','partial')";
+            $where[] = "spotify_id REGEXP '^[A-Za-z0-9]{22}$' AND spotify_features_updated_at IS NOT NULL AND spotify_features_status IN ('complete','partial')";
         }
         if (($filters['spotify_state']??'') === 'no_id') {
-            $where[] = "COALESCE(spotify_id,'')=''";
+            $where[] = "(COALESCE(spotify_id,'')='' OR spotify_id NOT REGEXP '^[A-Za-z0-9]{22}$')";
         }
         if (($filters['spotify_state']??'') === 'missing_metrics') {
-            $where[] = "COALESCE(spotify_id,'')<>'' AND (spotify_features_updated_at IS NULL OR spotify_features_status NOT IN ('complete','partial'))";
+            $where[] = "spotify_id REGEXP '^[A-Za-z0-9]{22}$' AND (spotify_features_updated_at IS NULL OR spotify_features_status NOT IN ('complete','partial'))";
         }
         if (($filters['missing']??'') === 'genre') {
             $where[] = "TRIM(COALESCE(genre,''))=''";
@@ -135,6 +150,12 @@ final class LibraryService
             $where[] = "TRIM(COALESCE(camelot,''))='' AND TRIM(COALESCE(musical_key,''))=''";
         }
         return [$where, $params];
+    }
+
+
+    private function filterValues(array $filters, string $key): array
+    {
+        return array_values(array_filter(array_map('trim', explode('|', (string)($filters[$key] ?? ''))), fn(string $value): bool => $value !== ''));
     }
 
     private function searchTokens(string $query): array
@@ -155,14 +176,14 @@ final class LibraryService
     private function normalizeSearchToken(string $value): string
     {
         $value = mb_strtolower(trim($value));
-        $map = ['Ã '=>'a','Ã¡'=>'a','Ã¢'=>'a','Ã¤'=>'a','Ã¨'=>'e','Ã©'=>'e','Ãª'=>'e','Ã«'=>'e','Ã¬'=>'i','Ã­'=>'i','Ã®'=>'i','Ã¯'=>'i','Ã²'=>'o','Ã³'=>'o','Ã´'=>'o','Ã¶'=>'o','Ã¹'=>'u','Ãº'=>'u','Ã»'=>'u','Ã¼'=>'u','Ã±'=>'n','â€™'=>"'",'`'=>"'"];
+        $map = ['ÃƒÂ '=>'a','ÃƒÂ¡'=>'a','ÃƒÂ¢'=>'a','ÃƒÂ¤'=>'a','ÃƒÂ¨'=>'e','ÃƒÂ©'=>'e','ÃƒÂª'=>'e','ÃƒÂ«'=>'e','ÃƒÂ¬'=>'i','ÃƒÂ­'=>'i','ÃƒÂ®'=>'i','ÃƒÂ¯'=>'i','ÃƒÂ²'=>'o','ÃƒÂ³'=>'o','ÃƒÂ´'=>'o','ÃƒÂ¶'=>'o','ÃƒÂ¹'=>'u','ÃƒÂº'=>'u','ÃƒÂ»'=>'u','ÃƒÂ¼'=>'u','ÃƒÂ±'=>'n','Ã¢â‚¬â„¢'=>"'",'`'=>"'"];
         $value = strtr($value, $map);
         return trim(preg_replace('/[^a-z0-9]+/u', ' ', $value) ?? $value);
     }
 
     public function find(int $id): ?array
     {
-        $statement = $this->pdo->prepare("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE tracks.id = ? AND UPPER(file_path) LIKE 'E:%'");
+        $statement = $this->pdo->prepare("SELECT tracks.*,EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AS vdj_linked FROM tracks WHERE tracks.id = ? AND " . workbenchLibrarySqlCondition());
         $statement->execute([$id]);
         $track = $statement->fetch();
         return $track ? $this->hydrate($track) : null;
@@ -176,23 +197,24 @@ final class LibraryService
     public function duplicateGroupCount(): int
     {
         $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
-        return (int) $this->pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1) duplicate_groups")->fetchColumn();
+        return (int) $this->pdo->query("SELECT COUNT(*) FROM (SELECT 1 FROM tracks WHERE {$localFilter}" . definitiveMusicSqlCondition() . " AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1) duplicate_groups")->fetchColumn();
     }
 
     public function duplicates(int $limit = 200): array
     {
         $limit = min(1000, max(1, $limit));
         $localFilter = appUsesLocalFiles() ? "file_exists=1 AND " : "";
-        $groups = $this->pdo->query("SELECT normalized_artist, normalized_title, COUNT(*) total FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1 ORDER BY total DESC LIMIT $limit")->fetchAll();
+        $libraryCondition = definitiveMusicSqlCondition();
+        $groups = $this->pdo->query("SELECT normalized_artist, normalized_title, COUNT(*) total FROM tracks WHERE {$localFilter}{$libraryCondition} AND normalized_title <> '' GROUP BY normalized_artist, normalized_title HAVING COUNT(*) > 1 ORDER BY total DESC LIMIT $limit")->fetchAll();
         $result = [];
-        $fetch = $this->pdo->prepare("SELECT * FROM tracks WHERE {$localFilter}UPPER(file_path) LIKE 'E:%' AND normalized_artist = ? AND normalized_title = ? ORDER BY bitrate DESC, rating DESC, play_count DESC");
+        $fetch = $this->pdo->prepare("SELECT * FROM tracks WHERE {$localFilter}{$libraryCondition} AND normalized_artist = ? AND normalized_title = ? ORDER BY bitrate DESC, rating DESC, play_count DESC");
         foreach ($groups as $group) {
             $fetch->execute([$group['normalized_artist'], $group['normalized_title']]);
             $tracks = array_map([$this, 'hydrate'], $fetch->fetchAll());
             $result[] = [
                 'fingerprint' => sha1($group['normalized_artist'] . '|' . $group['normalized_title']),
                 'label' => trim($tracks[0]['artist'] . ' - ' . $tracks[0]['title']),
-                'reason' => 'Stesso artista e titolo dopo la normalizzazione; confronta versione, qualità e percorso.',
+                'reason' => 'Stesso artista e titolo dopo la normalizzazione; confronta versione, qualitÃ  e percorso.',
                 'recommended' => $tracks[0],
                 'items' => $tracks,
             ];
@@ -211,7 +233,7 @@ final class LibraryService
         ];
         $result = [];
         foreach ($checks as $key => $condition) {
-            $result[$key] = (int) $this->pdo->query("SELECT COUNT(*) FROM tracks WHERE UPPER(file_path) LIKE 'E:%' AND $condition")->fetchColumn();
+            $result[$key] = (int) $this->pdo->query("SELECT COUNT(*) FROM tracks WHERE " . definitiveMusicSqlCondition() . " AND $condition")->fetchColumn();
         }
         return $result;
     }
@@ -295,9 +317,14 @@ final class LibraryService
     {
         $lock = fopen(APP_ROOT . '/storage/virtualdj-sync.lock', 'c+');
         if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
-            throw new RuntimeException('Una sincronizzazione VirtualDJ è già in corso.');
+            throw new RuntimeException('Una sincronizzazione VirtualDJ Ã¨ giÃ  in corso.');
         }
         try {
+            $guard = class_exists('DataProtectionService') ? new DataProtectionService($this->pdo) : null;
+            $libraryCondition = definitiveMusicSqlCondition();
+            $physicalLibraryCondition = 'file_exists=1 AND ' . $libraryCondition;
+            $beforeMetrics = $guard?->metricsSnapshot($physicalLibraryCondition) ?? [];
+            $snapshot = $guard?->snapshot('before_sync_all');
             foreach ($this->ignoredVirtualDjDrives() as $drive) {
                 $statement = $this->pdo->prepare("DELETE FROM library_databases WHERE drive_letter = ? AND label LIKE 'Database drive %'");
                 $statement->execute([$drive]);
@@ -330,12 +357,18 @@ final class LibraryService
                     $results[] = ['path'=>$path,'label'=>$database['label'],'status'=>'error','error'=>$error->getMessage(),'modified_at'=>date('Y-m-d H:i:s',$modified)];
                 }
             }
-            $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id)");
+            $completion = $guard ? $guard->completePhysicalTrackData($physicalLibraryCondition) : null;
+            $this->pdo->exec("UPDATE tracks SET file_exists=0,updated_at=CURRENT_TIMESTAMP WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AND (TRIM(COALESCE(spotify_id,''))<>'' OR TRIM(COALESCE(metadata_source,''))<>'' OR spotify_energy IS NOT NULL OR kr_energy IS NOT NULL)");
+            $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AND TRIM(COALESCE(spotify_id,''))='' AND TRIM(COALESCE(metadata_source,''))='' AND spotify_energy IS NULL AND kr_energy IS NULL");
             $changed = count(array_filter($results, fn($item) => $item['status'] === 'synced'));
             $inboxScan = $this->scanConfiguredInbox();
             $removed = $this->removeMissingLocalTracks() + $this->removeMissingDeletionFolderTracks();
             $pruned = $this->pruneToDefinitiveLibrary();
-            return ['databases'=>$results,'changed'=>$changed,'inbox_scan'=>$inboxScan,'removed'=>$removed,'pruned'=>$pruned,'total'=>count($results)];
+            if ($guard) {
+                $afterMetrics = $guard->metricsSnapshot($physicalLibraryCondition);
+                $guard->guardMetadataLoss($beforeMetrics, $afterMetrics, 'sync-all');
+            }
+            return ['databases'=>$results,'changed'=>$changed,'inbox_scan'=>$inboxScan,'removed'=>$removed,'pruned'=>$pruned,'total'=>count($results),'snapshot'=>$snapshot,'completion'=>$completion];
         } finally {
             flock($lock, LOCK_UN);
             fclose($lock);
@@ -364,11 +397,15 @@ final class LibraryService
 
     public function pruneToDefinitiveLibrary(): array
     {
+        $guard = class_exists('DataProtectionService') ? new DataProtectionService($this->pdo) : null;
+        $beforeMetrics = $guard?->metricsSnapshot(trackedLibrarySqlCondition()) ?? [];
+        $snapshot = $guard?->snapshot('before_prune_library');
         $before=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
-        $nonE=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks WHERE UPPER(file_path) NOT LIKE 'E:%'")->fetchColumn();
+        $libraryCondition = trackedLibrarySqlCondition();
+        $nonE=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks WHERE NOT ($libraryCondition)")->fetchColumn();
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->exec("DELETE FROM tracks WHERE UPPER(file_path) NOT LIKE 'E:%'");
+            $this->pdo->exec("DELETE FROM tracks WHERE NOT ($libraryCondition)");
             $this->pdo->exec("DELETE FROM library_databases WHERE label LIKE 'Database drive %' AND drive_letter <> 'E'");
             $this->pdo->commit();
         } catch (Throwable $error) {
@@ -376,7 +413,11 @@ final class LibraryService
             throw $error;
         }
         $after=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
-        return ['before'=>$before,'after'=>$after,'removed_non_e'=>$nonE];
+        if ($guard) {
+            $afterMetrics = $guard->metricsSnapshot(trackedLibrarySqlCondition());
+            $guard->guardMetadataLoss($beforeMetrics, $afterMetrics, 'prune-library');
+        }
+        return ['before'=>$before,'after'=>$after,'removed_non_e'=>$nonE,'snapshot'=>$snapshot];
     }
 
     public function virtualDjDatabaseStatus(): array
@@ -392,6 +433,7 @@ final class LibraryService
 
     public function musicRootOptions(): array
     {
+        if (appUsesLocalFiles()) $this->scanConfiguredInbox();
         return array_map(static function (array $item): array {
             $item['label'] = $item['tree_label'] ?? $item['label'];
             return $item;
@@ -401,15 +443,15 @@ final class LibraryService
     public function comparisonFolderOptions(): array
     {
         if (appUsesLocalFiles()) $this->refreshTrackedFileExistence();
-        $root = canonicalPath('E:\\LIBRERIA_DEFINITIVA');
-        $roots = [['path'=>$root,'label'=>'Tutta Libreria Definitiva','root'=>$root,'depth'=>0]];
-        $folders = $this->pdo->query(<<<'SQL'
+        $root = definitiveMusicRoot();
+        $roots = [['path'=>$root,'label'=>'Tutta Libreria Musicale','root'=>$root,'depth'=>0]];
+        $folders = $this->pdo->query("
             SELECT folder, COUNT(DISTINCT file_path) AS track_count
             FROM tracks
-            WHERE UPPER(file_path) LIKE 'E:%'
+            WHERE " . definitiveMusicSqlCondition() . "
             GROUP BY folder
             ORDER BY folder
-        SQL)->fetchAll();
+        ")->fetchAll();
         $items = [];
         $seen = [];
         foreach ($roots as $root) {
@@ -456,75 +498,78 @@ final class LibraryService
 
     public function definitiveLibraryFolderOptions(): array
     {
-        if (appUsesLocalFiles()) $this->refreshTrackedFileExistence();
-        $root = canonicalPath('E:\\LIBRERIA_DEFINITIVA');
-        $prefix = strtolower($root . '\\');
-        $folders = $this->pdo->query(<<<'SQL'
+        if (appUsesLocalFiles()) {
+            $this->scanConfiguredInbox();
+            $this->refreshTrackedFileExistence();
+        }
+        $musicRoot = definitiveMusicRoot();
+        $inboxRoot = canonicalPath((string) setting('spotmate_download_folder', technicalAreaPath('01_INBOX\Da_classificare')));
+        $roots = [
+            ['path' => $musicRoot, 'label' => 'Tutta Libreria Musicale', 'inbox' => false],
+        ];
+        if ($inboxRoot !== '' && is_dir($inboxRoot)) {
+            $roots[] = ['path' => $inboxRoot, 'label' => 'Da classificare', 'inbox' => true];
+        }
+        $folders = $this->pdo->query("
             SELECT folder, COUNT(DISTINCT file_path) AS track_count
             FROM tracks
-            WHERE UPPER(file_path) LIKE 'E:%'
+            WHERE " . workbenchLibrarySqlCondition() . "
             GROUP BY folder
             ORDER BY folder
-        SQL)->fetchAll();
-        $counts = [$root => 0];
-        foreach ($folders as $folder) {
-            $folderPath = rtrim(canonicalPath((string) $folder['folder']), '\\');
-            if (!str_starts_with(strtolower($folderPath), $prefix) || (appUsesLocalFiles() && !is_dir($folderPath))) continue;
-            if (preg_match('/\\\\PLAYLIST(\\\\|$)/i', $folderPath)) continue;
-            $count = (int) $folder['track_count'];
-            $counts[$root] += $count;
-            $relative = substr($folderPath, strlen($root) + 1);
-            $parts = array_values(array_filter(explode('\\', $relative), fn(string $part): bool => $part !== ''));
-            $current = $root;
-            foreach ($parts as $part) {
-                $current .= '\\' . $part;
-                $counts[$current] = ($counts[$current] ?? 0) + $count;
+        ")->fetchAll();
+        $counts = [];
+        $rootByPath = [];
+        $inboxByPath = [];
+        foreach ($roots as $rootInfo) {
+            $rootPath = rtrim((string)$rootInfo['path'], '\\');
+            $counts[$rootPath] = 0;
+            $rootByPath[$rootPath] = $rootPath;
+            $inboxByPath[$rootPath] = (bool)$rootInfo['inbox'];
+            $prefix = strtolower($rootPath . '\\');
+            foreach ($folders as $folder) {
+                $folderPath = rtrim(canonicalPath((string)$folder['folder']), '\\');
+                $folderLower = strtolower($folderPath);
+                if ($folderLower !== strtolower($rootPath) && !str_starts_with($folderLower, $prefix)) continue;
+                if (appUsesLocalFiles() && !is_dir($folderPath)) continue;
+                if (preg_match('/\\\\PLAYLIST(\\\\|$)/i', $folderPath)) continue;
+                $count = (int)$folder['track_count'];
+                $counts[$rootPath] += $count;
+                $relative = $folderPath === $rootPath ? '' : substr($folderPath, strlen($rootPath) + 1);
+                $parts = array_values(array_filter(explode('\\', $relative), fn(string $part): bool => $part !== ''));
+                $current = $rootPath;
+                foreach ($parts as $part) {
+                    $current .= '\\' . $part;
+                    $counts[$current] = ($counts[$current] ?? 0) + $count;
+                    $rootByPath[$current] = $rootPath;
+                    $inboxByPath[$current] = (bool)$rootInfo['inbox'];
+                }
             }
         }
         $items = [];
         foreach ($counts as $path => $count) {
             if ($count < 1 || (appUsesLocalFiles() && !is_dir($path))) continue;
-            $relative = $path === $root ? 'Tutta Libreria Definitiva' : substr($path, strlen($root) + 1);
-            $depth = $path === $root ? 0 : substr_count($relative, '\\') + 1;
-            $name = $path === $root ? 'Tutta Libreria Definitiva' : basename($path);
+            $rootPath = $rootByPath[$path] ?? $musicRoot;
+            $isInbox = (bool)($inboxByPath[$path] ?? false);
+            $relative = $path === $rootPath ? ($isInbox ? 'Da classificare' : 'Tutta Libreria Musicale') : substr($path, strlen($rootPath) + 1);
+            $depth = $path === $rootPath ? 0 : substr_count($relative, '\\') + 1;
+            $name = $path === $rootPath ? ($isInbox ? 'Da classificare' : 'Tutta Libreria Musicale') : basename($path);
             $items[] = [
                 'path' => $path,
                 'label' => $relative . ' (' . number_format($count, 0, ',', '.') . ' brani)',
-                'tree_label' => ($depth ? str_repeat('↳ ', min($depth, 4)) : '') . $name . ' (' . number_format($count, 0, ',', '.') . ' brani)',
-                'root' => $root,
+                'tree_label' => ($isInbox ? '[INBOX] ' : '') . ($depth ? str_repeat('  ', min($depth, 4)) . '- ' : '') . $name . ' (' . number_format($count, 0, ',', '.') . ' brani)',
+                'root' => $rootPath,
                 'depth' => $depth,
-                'sort_key' => $path === $root ? '' : str_replace('\\', "\n", $relative),
+                'sort_key' => ($isInbox ? '0_INBOX_' : '1_MUSIC_') . ($path === $rootPath ? '' : str_replace('\\', "\n", $relative)),
                 'count' => $count,
             ];
         }
-        usort($items, fn(array $a,array $b): int => strnatcasecmp((string)$a['sort_key'], (string)$b['sort_key']));
+        usort($items, fn(array $a, array $b): int => strcmp((string)$a['sort_key'], (string)$b['sort_key']));
         return $items;
-    }
-
-    public function importMetadataFromVirtualDj(array $trackIds): array
-    {
-        $ids=array_values(array_unique(array_filter(array_map('intval',$trackIds),fn(int $id): bool=>$id>0)));
-        if(!$ids)throw new RuntimeException('Nessun brano visibile da aggiornare.');
-        $placeholders=implode(',',array_fill(0,count($ids),'?'));
-        $statement=$this->pdo->prepare("SELECT t.id,t.file_path,s.database_path,s.source_file_path FROM tracks t JOIN track_sources s ON s.track_id=t.id WHERE t.id IN ($placeholders) ORDER BY t.id,CASE WHEN s.database_path=? THEN 0 ELSE 1 END,s.last_seen_at DESC");
-        $statement->execute([...$ids,(string)setting('vdj_database','')]);$links=$statement->fetchAll();
-        $databases=[];foreach($links as $link)$databases[(string)$link['database_path']]=true;
-        $metadataByDatabase=[];
-        foreach(array_keys($databases) as $databasePath){
-            if(!is_file($databasePath))continue;$xml=@simplexml_load_file($databasePath);if(!$xml)continue;$map=[];
-            foreach($xml->Song as $song){$year=(int)($song->Tags['Year']??0);$genre=trim((string)($song->Tags['Genre']??''));if($year<1000||$year>2100)$year=null;if($year===null&&$genre==='')continue;$source=canonicalPath((string)$song['FilePath']);if($source!=='')$map[strtolower($source)]=['year'=>$year,'genre'=>$genre];}
-            $metadataByDatabase[$databasePath]=$map;
-        }
-        $found=[];foreach($links as $link){$id=(int)$link['id'];if(isset($found[$id]))continue;$database=(string)$link['database_path'];$source=canonicalPath((string)$link['source_file_path']);$metadata=$metadataByDatabase[$database][strtolower($source)]??null;if($metadata)$found[$id]=$metadata;}
-        $update=$this->pdo->prepare("UPDATE tracks SET year=COALESCE(?,year),year_manual=IF(? IS NULL,year_manual,1),genre=IF(?='',genre,?),genre_manual=IF(?='',genre_manual,1),updated_at=CURRENT_TIMESTAMP WHERE id=?");$this->pdo->beginTransaction();
-        try{foreach($found as $id=>$metadata){$year=$metadata['year'];$genre=$metadata['genre'];$update->execute([$year,$year,$genre,$genre,$genre,$id]);}$this->pdo->commit();}catch(Throwable $error){$this->pdo->rollBack();throw $error;}
-        $items=[];foreach($found as $id=>$metadata)$items[]=['id'=>(int)$id,'year'=>$metadata['year'],'genre'=>$metadata['genre']];
-        return ['ok'=>true,'requested'=>count($ids),'updated'=>count($found),'missing'=>count($ids)-count($found),'items'=>$items];
     }
 
     private function refreshTrackedFileExistence(): void
     {
-        $rows = $this->pdo->query("SELECT id,file_path,file_exists FROM tracks WHERE UPPER(file_path) LIKE 'E:%'")->fetchAll();
+        $rows = $this->pdo->query("SELECT id,file_path,file_exists FROM tracks WHERE " . definitiveMusicSqlCondition())->fetchAll();
         $update = $this->pdo->prepare('UPDATE tracks SET file_exists = ? WHERE id = ?');
         $this->pdo->beginTransaction();
         try {
@@ -590,8 +635,9 @@ final class LibraryService
 
     private function removeMissingLocalTracks(): int
     {
-        $rows = $this->pdo->query("SELECT id,file_path FROM tracks WHERE source='virtualdj' AND UPPER(file_path) LIKE 'E:%'")->fetchAll();
-        $delete = $this->pdo->prepare('DELETE FROM tracks WHERE id=?');
+        $rows = $this->pdo->query("SELECT id,file_path FROM tracks WHERE source='virtualdj' AND " . definitiveMusicSqlCondition())->fetchAll();
+        $delete = $this->pdo->prepare("DELETE FROM tracks WHERE id=? AND TRIM(COALESCE(spotify_id,''))='' AND TRIM(COALESCE(metadata_source,''))='' AND spotify_energy IS NULL AND kr_energy IS NULL");
+        $markMissing = $this->pdo->prepare('UPDATE tracks SET file_exists=0,updated_at=CURRENT_TIMESTAMP WHERE id=?');
         $removed = 0;
         foreach ($rows as $row) {
             $path = (string) $row['file_path'];
@@ -599,7 +645,11 @@ final class LibraryService
             $drive = strtoupper($path[0]) . ':\\';
             if (!is_dir($drive) || is_file($path)) continue;
             $delete->execute([(int) $row['id']]);
-            $removed += $delete->rowCount();
+            if ($delete->rowCount() > 0) {
+                $removed++;
+            } else {
+                $markMissing->execute([(int) $row['id']]);
+            }
         }
         return $removed;
     }
@@ -607,13 +657,18 @@ final class LibraryService
     private function removeMissingDeletionFolderTracks(): int
     {
         $rows = $this->pdo->query("SELECT id,file_path FROM tracks WHERE UPPER(folder) LIKE '%DA_CANCELLARE%' OR UPPER(file_path) LIKE '%DA_CANCELLARE%'")->fetchAll();
-        $delete = $this->pdo->prepare('DELETE FROM tracks WHERE id=?');
+        $delete = $this->pdo->prepare("DELETE FROM tracks WHERE id=? AND TRIM(COALESCE(spotify_id,''))='' AND TRIM(COALESCE(metadata_source,''))='' AND spotify_energy IS NULL AND kr_energy IS NULL");
+        $markMissing = $this->pdo->prepare('UPDATE tracks SET file_exists=0,updated_at=CURRENT_TIMESTAMP WHERE id=?');
         $removed = 0;
         foreach ($rows as $row) {
             $path = (string) $row['file_path'];
             if (is_file($path)) continue;
             $delete->execute([(int) $row['id']]);
-            $removed += $delete->rowCount();
+            if ($delete->rowCount() > 0) {
+                $removed++;
+            } else {
+                $markMissing->execute([(int) $row['id']]);
+            }
         }
         return $removed;
     }
@@ -682,7 +737,7 @@ final class LibraryService
 
     public function refreshPathTaxonomy(): array
     {
-        $rows = $this->pdo->query("SELECT id,file_path,archive_area,macro_genre,folder_genre FROM tracks WHERE UPPER(file_path) LIKE 'E:%'")->fetchAll();
+        $rows = $this->pdo->query("SELECT id,file_path,archive_area,macro_genre,folder_genre FROM tracks WHERE " . trackedLibrarySqlCondition())->fetchAll();
         $update = $this->pdo->prepare('UPDATE tracks SET archive_area=?, macro_genre=?, folder_genre=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
         $updated = 0;
         foreach ($rows as $row) {
@@ -699,7 +754,7 @@ final class LibraryService
         $summary = $this->pdo->query("
             SELECT archive_area,macro_genre,folder_genre,genre micro_genre,COUNT(*) tracks
             FROM tracks
-            WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%'
+            WHERE file_exists=1 AND " . trackedLibrarySqlCondition() . "
             GROUP BY archive_area,macro_genre,folder_genre,genre
             ORDER BY archive_area,macro_genre,folder_genre,tracks DESC,micro_genre
         ")->fetchAll();
@@ -711,7 +766,7 @@ final class LibraryService
         $rows = $this->pdo->query("
             SELECT archive_area,macro_genre,folder_genre,COUNT(*) tracks
             FROM tracks
-            WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%'
+            WHERE file_exists=1 AND " . trackedLibrarySqlCondition() . "
             GROUP BY archive_area,macro_genre,folder_genre
             ORDER BY archive_area,macro_genre,folder_genre
         ")->fetchAll();
@@ -720,8 +775,8 @@ final class LibraryService
         foreach ($rows as $row) {
             $macro = (string)($row['macro_genre'] ?? '');
             $folder = (string)($row['folder_genre'] ?? '');
-            if ($macro !== '') $macros[$macro] = ($macros[$macro] ?? 0) + (int)$row['tracks'];
-            if ($folder !== '') $folders[] = [
+            if ($macro !== '' && (string)($row['archive_area'] ?? '') === 'LIBRERIA') $macros[$macro] = ($macros[$macro] ?? 0) + (int)$row['tracks'];
+            if ($folder !== '' && (string)($row['archive_area'] ?? '') === 'LIBRERIA') $folders[] = [
                 'archive_area' => (string)($row['archive_area'] ?? ''),
                 'macro_genre' => $macro,
                 'folder_genre' => $folder,
@@ -729,9 +784,28 @@ final class LibraryService
             ];
         }
         ksort($macros, SORT_NATURAL | SORT_FLAG_CASE);
+        $genres = $this->pdo->query("
+            SELECT MIN(TRIM(genre)) name, COUNT(*) tracks
+            FROM tracks
+            WHERE file_exists=1 AND " . definitiveMusicSqlCondition() . " AND TRIM(COALESCE(genre,''))<>''
+            GROUP BY LOWER(TRIM(genre))
+            ORDER BY tracks DESC, name
+        ")->fetchAll();
+        $keys = $this->pdo->query("
+            SELECT key_name name, COUNT(*) tracks
+            FROM (
+                SELECT UPPER(TRIM(COALESCE(NULLIF(camelot,''), musical_key))) key_name
+                FROM tracks
+                WHERE file_exists=1 AND " . definitiveMusicSqlCondition() . " AND TRIM(COALESCE(NULLIF(camelot,''), musical_key))<>''
+            ) keyed
+            GROUP BY key_name
+            ORDER BY tracks DESC, CASE WHEN key_name REGEXP '^[0-9]+[AB]$' THEN 0 ELSE 1 END, CAST(key_name AS UNSIGNED), key_name
+        ")->fetchAll();
         return [
             'macros' => array_map(fn(string $name, int $tracks): array => ['name'=>$name,'tracks'=>$tracks], array_keys($macros), array_values($macros)),
             'folders' => $folders,
+            'genres' => array_map(fn(array $row): array => ['name'=>(string)$row['name'],'tracks'=>(int)$row['tracks']], $genres),
+            'keys' => array_map(fn(array $row): array => ['name'=>(string)$row['name'],'tracks'=>(int)$row['tracks']], $keys),
         ];
     }
 

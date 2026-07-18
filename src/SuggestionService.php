@@ -5,7 +5,7 @@ final class SuggestionService
 {
     public function __construct(private PDO $pdo, private LibraryService $library, private VirtualDjHistoryService $history) {}
 
-    public function suggest(int $currentId, string $mode = 'same', string $requiredTag = ''): array
+    public function suggest(int $currentId, string $mode = 'same', string $requiredTag = '', array $filters = []): array
     {
         $current = $this->library->find($currentId);
         if (!$current) throw new RuntimeException('Brano attuale non trovato.');
@@ -17,15 +17,19 @@ final class SuggestionService
             $recentFingerprints[normalizeText((string) $recent['artist']) . '|' . normalizeTitle((string) $recent['title'])] = true;
         }
 
-        $candidates = $this->pdo->query("
+        [$filterSql, $filterParams] = $this->candidateFilters($filters);
+        $statement = $this->pdo->prepare("
             SELECT *
             FROM tracks
             WHERE id <> " . (int) $currentId . "
               AND file_exists=1
-              AND UPPER(file_path) LIKE 'E:%'
+              AND " . definitiveMusicSqlCondition() . "
+              $filterSql
             ORDER BY COALESCE(popularity,0) DESC, rating DESC, id DESC
             LIMIT 12000
-        ")->fetchAll();
+        ");
+        $statement->execute($filterParams);
+        $candidates = $statement->fetchAll();
 
         $seenFingerprints = [];
         $results = [];
@@ -41,6 +45,7 @@ final class SuggestionService
 
             [$score, $reasons, $badges] = $this->score($current, $candidate, $mode, $context);
             if ($requiredTag !== '' && !$this->hasBadge($badges, $requiredTag)) continue;
+            if (!$this->matchesTagFilter($candidate, (string)($filters['tag'] ?? ''))) continue;
 
             $candidate['tags'] = trackTags($candidate);
             $candidate['auto_tags'] = autoTrackTags($candidate);
@@ -53,6 +58,56 @@ final class SuggestionService
 
         usort($results, fn(array $a, array $b) => $b['score'] <=> $a['score']);
         return array_slice($results, 0, 20);
+    }
+
+    private function candidateFilters(array $filters): array
+    {
+        $where = [];
+        $params = [];
+        foreach (['macro_genre'] as $field) {
+            $values = array_values(array_filter(array_map('trim', explode('|', (string)($filters[$field] ?? '')))));
+            if ($values) {
+                $where[] = "$field IN (" . implode(',', array_fill(0, count($values), '?')) . ")";
+                array_push($params, ...$values);
+            }
+        }
+        $genres = array_values(array_filter(array_map('trim', explode('|', (string)($filters['genre'] ?? '')))));
+        if ($genres) {
+            $where[] = 'LOWER(TRIM(genre)) IN (' . implode(',', array_fill(0, count($genres), '?')) . ')';
+            foreach ($genres as $genre) $params[] = mb_strtolower($genre, 'UTF-8');
+        }
+        $musicalKeys = array_values(array_filter(array_map(fn(string $value): string => strtoupper(trim($value)), explode('|', (string)($filters['musical_key'] ?? '')))));
+        if ($musicalKeys) {
+            $placeholders = implode(',', array_fill(0, count($musicalKeys), '?'));
+            $where[] = "(UPPER(TRIM(camelot)) IN ($placeholders) OR UPPER(TRIM(musical_key)) IN ($placeholders))";
+            array_push($params, ...$musicalKeys, ...$musicalKeys);
+        }
+        $year = (int)($filters['year'] ?? 0);
+        if ($year > 0) {
+            $where[] = 'year = ?';
+            $params[] = $year;
+        }
+        $bpmMin = (int)($filters['bpm_min'] ?? 0);
+        if ($bpmMin > 0) {
+            $where[] = 'bpm >= ?';
+            $params[] = $bpmMin;
+        }
+        $bpmMax = (int)($filters['bpm_max'] ?? 0);
+        if ($bpmMax > 0) {
+            $where[] = 'bpm <= ?';
+            $params[] = $bpmMax;
+        }
+        return [$where ? ' AND ' . implode(' AND ', $where) : '', $params];
+    }
+
+    private function matchesTagFilter(array $candidate, string $tag): bool
+    {
+        $tag = normalizeText($tag);
+        if ($tag === '') return true;
+        foreach (allTrackTags($candidate) as $candidateTag) {
+            if (str_contains(normalizeText((string)$candidateTag), $tag)) return true;
+        }
+        return false;
     }
 
     private function context(array $current, array $candidate): array

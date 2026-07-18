@@ -10,8 +10,8 @@ final class SpotifyDuplicateService
         $limit = max(1, min(500, $limit));
         $sameSpotifyId = $this->sameSpotifyId($limit);
         $sameIsrc = [];
-        $sameArtistTitleDifferentSpotify = [];
-        $groups = $sameSpotifyId;
+        $sameArtistTitleDifferentSpotify = $this->sameTitleSharedArtistDifferentSpotify($limit);
+        $groups = array_merge($sameSpotifyId, $sameArtistTitleDifferentSpotify);
         usort($groups, fn(array $left, array $right): int => [$right['confidence'], $right['total']] <=> [$left['confidence'], $left['total']]);
         $shown = array_slice($groups, 0, $limit);
 
@@ -132,7 +132,7 @@ final class SpotifyDuplicateService
             SELECT spotify_id, normalized_artist, normalized_title
             FROM tracks
             WHERE file_exists=1
-              AND UPPER(file_path) LIKE 'E:%'
+              AND " . definitiveMusicSqlCondition() . "
               AND EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id)
               AND TRIM(COALESCE(spotify_id,'')) <> ''
               AND normalized_artist <> ''
@@ -151,12 +151,100 @@ final class SpotifyDuplicateService
         return $groups;
     }
 
+    private function sameTitleSharedArtistDifferentSpotify(int $limit): array
+    {
+        $statement = $this->pdo->query("
+            SELECT id,artist,title,normalized_artist,normalized_title,spotify_id
+            FROM tracks
+            WHERE file_exists=1
+              AND " . definitiveMusicSqlCondition() . "
+              AND EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id)
+              AND TRIM(COALESCE(spotify_id,'')) <> ''
+              AND normalized_artist <> ''
+              AND normalized_title <> ''
+            ORDER BY normalized_title, normalized_artist, id
+        ");
+        $byTitle = [];
+        foreach ($statement->fetchAll() as $row) {
+            $byTitle[(string)$row['normalized_title']][] = $row;
+        }
+
+        $groups = [];
+        foreach ($byTitle as $title => $rows) {
+            if (count($rows) < 2) continue;
+            $components = $this->artistOverlapComponents($rows);
+            foreach ($components as $ids) {
+                if (count($ids) < 2) continue;
+                $idList = implode(',', array_map('intval', $ids));
+                $tracksStatement = $this->pdo->query(str_replace('%s', $idList, $this->trackSelectSql('id IN (%s)')));
+                $tracks = $tracksStatement->fetchAll();
+                $spotifyIds = array_values(array_unique(array_filter(array_map(fn(array $track): string => (string)$track['spotify_id'], $tracks))));
+                if (count($tracks) < 2 || count($spotifyIds) < 2) continue;
+                $artists = array_values(array_unique(array_map(fn(array $track): string => (string)$track['artist'], $tracks)));
+                $groups[] = $this->group(
+                    'same_title_shared_artist_different_spotify',
+                    70,
+                    'Stesso titolo, artista in comune, Spotify ID diversi: ' . $title . ' / ' . implode(' | ', array_slice($artists, 0, 3)),
+                    $tracks
+                );
+                if (count($groups) >= $limit) return $groups;
+            }
+        }
+        return $groups;
+    }
+
+    private function artistOverlapComponents(array $rows): array
+    {
+        $parent = [];
+        foreach ($rows as $row) $parent[(int)$row['id']] = (int)$row['id'];
+        $find = function(int $id) use (&$parent, &$find): int {
+            if ($parent[$id] !== $id) $parent[$id] = $find($parent[$id]);
+            return $parent[$id];
+        };
+        $union = function(int $left, int $right) use (&$parent, $find): void {
+            $leftRoot = $find($left);
+            $rightRoot = $find($right);
+            if ($leftRoot !== $rightRoot) $parent[$rightRoot] = $leftRoot;
+        };
+
+        $count = count($rows);
+        for ($left = 0; $left < $count; $left++) {
+            for ($right = $left + 1; $right < $count; $right++) {
+                if ((string)$rows[$left]['spotify_id'] === (string)$rows[$right]['spotify_id']) continue;
+                if (!$this->shareArtistToken((string)$rows[$left]['normalized_artist'], (string)$rows[$right]['normalized_artist'])) continue;
+                $union((int)$rows[$left]['id'], (int)$rows[$right]['id']);
+            }
+        }
+
+        $components = [];
+        foreach ($rows as $row) $components[$find((int)$row['id'])][] = (int)$row['id'];
+        return array_values($components);
+    }
+
+    private function shareArtistToken(string $left, string $right): bool
+    {
+        $leftTokens = $this->artistTokens($left);
+        if (!$leftTokens) return false;
+        $rightTokens = array_flip($this->artistTokens($right));
+        foreach ($leftTokens as $token) {
+            if (isset($rightTokens[$token])) return true;
+        }
+        return false;
+    }
+
+    private function artistTokens(string $artist): array
+    {
+        $tokens = preg_split('/[^a-z0-9]+/i', strtolower($artist)) ?: [];
+        $stop = ['dj'=>true,'mc'=>true,'feat'=>true,'featuring'=>true,'ft'=>true,'the'=>true,'la'=>true,'el'=>true,'los'=>true,'las'=>true,'y'=>true,'and'=>true];
+        return array_values(array_unique(array_filter($tokens, fn(string $token): bool => strlen($token) >= 3 && !isset($stop[$token]))));
+    }
+
     private function trackSelectSql(string $where): string
     {
         return "
             SELECT id,artist,title,file_path,file_name,genre,year,bpm,camelot,version,spotify_id,isrc,bitrate,rating,play_count,file_exists,metadata_source,spotify_features_status,file_size,updated_at
             FROM tracks
-            WHERE file_exists=1 AND UPPER(file_path) LIKE 'E:%' AND EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AND {$where}
+            WHERE file_exists=1 AND " . definitiveMusicSqlCondition() . " AND EXISTS(SELECT 1 FROM track_sources WHERE track_sources.track_id=tracks.id) AND {$where}
             ORDER BY bitrate DESC, rating DESC, play_count DESC, file_size DESC, id
         ";
     }
@@ -212,6 +300,7 @@ final class SpotifyDuplicateService
         return match ($type) {
             'same_spotify_id' => 'Doppione molto probabile: stesso Spotify ID.',
             'same_isrc' => 'Doppione molto probabile: stesso ISRC.',
+            'same_title_shared_artist_different_spotify' => 'Controllo manuale: stesso titolo e almeno un artista in comune, ma Spotify ID diverso.',
             default => 'Possibile doppione o versione alternativa: artista/titolo uguali ma Spotify ID diverso.',
         };
     }

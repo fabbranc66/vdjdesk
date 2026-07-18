@@ -1,4 +1,4 @@
-# KR Desk — Riordino logico Fase A
+﻿# KR Desk â€” Riordino logico Fase A
 
 ## Obiettivo
 
@@ -16,7 +16,7 @@ La Fase A serve solo a rendere KR Desk una console ordinata, separando uso live 
 
 ## Stato attuale rilevato
 
-KR Desk oggi è un'app locale PHP con una pagina principale monolitica (`index.php`) e molte funzioni distribuite in script JS separati.
+KR Desk oggi Ã¨ un'app locale PHP con una pagina principale monolitica (`index.php`) e molte funzioni distribuite in script JS separati.
 
 ### Pagine principali
 
@@ -26,7 +26,7 @@ KR Desk oggi è un'app locale PHP con una pagina principale monolitica (`index.p
 - `tools/spotify-to-vdj.html`: tool locale incorporato in iframe.
 - `api.php`: unico endpoint API con molte azioni eterogenee.
 
-### Aree già presenti
+### Aree giÃ  presenti
 
 - Live desk / dashboard.
 - Ricerca libreria.
@@ -52,7 +52,7 @@ KR Desk oggi è un'app locale PHP con una pagina principale monolitica (`index.p
 - `SpotifyAudioFeaturesService.php`: Spotify ID, metriche, link, metadati.
 - `AudioReplacementService.php`: sostituzione audio via download monitorato.
 - `EDuplicateService.php`: doppioni interni a E.
-- `EComparisonService.php`: confronto cartelle con libreria definitiva E.
+- `EComparisonService.php`: confronto cartelle con libreria musicale E.
 - `TrackDeletionService.php`: cancellazione/spostamento tracce.
 - `LibraryStandardService.php`: test standard libreria.
 - `CodexQuizSuggestionService.php`: suggerimento domanda quiz.
@@ -77,14 +77,14 @@ Durante lavoro studio, invece, la libreria contiene troppe azioni operative live
 
 ## Nuovo principio di navigazione
 
-Separare KR Desk in due modalità:
+Separare KR Desk in due modalitÃ :
 
 1. Regia
 2. Studio
 
-La modalità scelta deve cambiare menu, priorità visiva e dashboard.
+La modalitÃ  scelta deve cambiare menu, prioritÃ  visiva e dashboard.
 
-## Modalità Regia
+## ModalitÃ  Regia
 
 Uso: durante evento live.
 
@@ -160,7 +160,7 @@ Non implementato come area autonoma completa.
 
 Da prevedere come sezione Regia separata, non dentro Libreria.
 
-## Modalità Studio
+## ModalitÃ  Studio
 
 Uso: prima/dopo serata.
 
@@ -172,7 +172,7 @@ Contiene manutenzione, classificazione, preparazione playlist e configurazioni.
 2. Libreria
 3. Playlist
 4. Import / Export
-5. Qualità / Doppioni
+5. QualitÃ  / Doppioni
 6. Analisi
 7. Eventi
 8. Configurazione
@@ -186,7 +186,7 @@ Mostra:
 - database VDJ da sincronizzare;
 - brani senza Spotify ID;
 - brani senza metriche;
-- brani sotto standard qualità;
+- brani sotto standard qualitÃ ;
 - doppioni aperti;
 - candidati cancellazione;
 - playlist in preparazione;
@@ -212,7 +212,7 @@ Contiene:
 
 Contiene:
 
-- lettura playlist libreria definitiva;
+- lettura playlist libreria musicale;
 - creazione playlist;
 - modifica ordine;
 - Camelot Strict / Soft;
@@ -236,7 +236,7 @@ Contiene:
 - procedure Sortlee;
 - eventuali report generati.
 
-### Qualità / Doppioni
+### QualitÃ  / Doppioni
 
 Contiene:
 
@@ -245,7 +245,7 @@ Contiene:
 - archivio marcati;
 - archivio approvati;
 - azzera stati;
-- qualità file;
+- qualitÃ  file;
 - bitrate;
 - video/audio separati;
 - file mancanti.
@@ -347,44 +347,44 @@ Oggi ci sono stati archivio, marcati, approvati, cerca e sposta.
 
 Decisione:
 
-- tutto in Studio > Qualità / Doppioni;
+- tutto in Studio > QualitÃ  / Doppioni;
 - nessuna esposizione in Regia.
 
 ### Quiz
 
-Oggi è dentro Richieste.
+Oggi Ã¨ dentro Richieste.
 
 Decisione:
 
 - Regia > Quiz come voce separata;
-- pagina mobile può restare unica `request.php` con tab Richieste / Quiz.
+- pagina mobile puÃ² restare unica `request.php` con tab Richieste / Quiz.
 
 ## Nuova mappa navigazione proposta
 
 ```text
 KR Desk
-├── Modalità Regia
-│   ├── Live
-│   ├── Richieste
-│   ├── Quiz
-│   ├── Karaoke
-│   ├── Automix / Coda
-│   └── Note Regia
-│
-└── Modalità Studio
-    ├── Dashboard Studio
-    ├── Libreria
-    ├── Playlist
-    ├── Import / Export
-    ├── Qualità / Doppioni
-    ├── Analisi
-    ├── Eventi
-    └── Configurazione
+â”œâ”€â”€ ModalitÃ  Regia
+â”‚   â”œâ”€â”€ Live
+â”‚   â”œâ”€â”€ Richieste
+â”‚   â”œâ”€â”€ Quiz
+â”‚   â”œâ”€â”€ Karaoke
+â”‚   â”œâ”€â”€ Automix / Coda
+â”‚   â””â”€â”€ Note Regia
+â”‚
+â””â”€â”€ ModalitÃ  Studio
+    â”œâ”€â”€ Dashboard Studio
+    â”œâ”€â”€ Libreria
+    â”œâ”€â”€ Playlist
+    â”œâ”€â”€ Import / Export
+    â”œâ”€â”€ QualitÃ  / Doppioni
+    â”œâ”€â”€ Analisi
+    â”œâ”€â”€ Eventi
+    â””â”€â”€ Configurazione
 ```
 
 ## Primo MVP di riordino
 
-Per evitare di rompere funzioni già operative, il primo intervento deve essere solo di layout/navigazione.
+Per evitare di rompere funzioni giÃ  operative, il primo intervento deve essere solo di layout/navigazione.
 
 ### Step 1
 
@@ -393,7 +393,7 @@ Creare switch Regia / Studio nella sidebar.
 Effetto:
 
 - in Regia mostra solo Live, Richieste, Quiz, Automix;
-- in Studio mostra Libreria, Playlist, Import / Export, Qualità, Analisi, Configurazione.
+- in Studio mostra Libreria, Playlist, Import / Export, QualitÃ , Analisi, Configurazione.
 
 Nessun endpoint nuovo.
 
@@ -404,7 +404,7 @@ Separare visivamente Richieste e Quiz.
 Effetto:
 
 - `view-requests` diventa solo richieste;
-- nuova `view-quiz` usa lo stesso markup quiz già presente.
+- nuova `view-quiz` usa lo stesso markup quiz giÃ  presente.
 
 Nessuna modifica a `QuizService`.
 
@@ -420,11 +420,11 @@ Effetto:
 
 ### Step 4
 
-Rinominare Doppioni in Qualità / Doppioni.
+Rinominare Doppioni in QualitÃ  / Doppioni.
 
 Effetto:
 
-- più chiaro che contiene qualità, confronto E, archivi, cancellazioni.
+- piÃ¹ chiaro che contiene qualitÃ , confronto E, archivi, cancellazioni.
 
 ### Step 5
 
@@ -456,19 +456,19 @@ Studio dashboard:
   - riorganizzare nav;
   - separare `view-requests` e `view-quiz`;
   - aggiungere `view-import-export`;
-  - rinominare `view-duplicates` in area Qualità / Doppioni.
+  - rinominare `view-duplicates` in area QualitÃ  / Doppioni.
 
 - `assets/app.js`
   - aggiornare `showView`;
-  - gestire visibilità menu per modalità;
+  - gestire visibilitÃ  menu per modalitÃ ;
   - caricare quiz quando si apre `view-quiz`;
   - caricare import/export quando necessario;
   - non cambiare logiche musicali.
 
 - `assets/app.css`
-  - stile switch modalità;
+  - stile switch modalitÃ ;
   - eventuale badge Regia / Studio;
-  - visibilità menu.
+  - visibilitÃ  menu.
 
 ### Probabili
 
@@ -502,11 +502,11 @@ Mitigazione:
 
 ### Rischio 2: mojibake
 
-Alcuni testi in `index.php` e `assets/app.js` risultano già corrotti.
+Alcuni testi in `index.php` e `assets/app.js` risultano giÃ  corrotti.
 
 Mitigazione:
 
-- durante il riordino, sostituire testi e icone con UTF-8 pulito o entità HTML;
+- durante il riordino, sostituire testi e icone con UTF-8 pulito o entitÃ  HTML;
 - non farlo insieme a modifiche musicali.
 
 ### Rischio 3: funzioni live dipendenti da ID
@@ -523,7 +523,7 @@ Mitigazione:
 Procedere con Fase A in questo ordine:
 
 1. switch Regia / Studio;
-2. menu filtrato per modalità;
+2. menu filtrato per modalitÃ ;
 3. separazione Richieste / Quiz;
 4. separazione Playlist / Import Export;
 5. dashboard Studio leggera;
