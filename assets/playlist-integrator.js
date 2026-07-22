@@ -45,11 +45,12 @@ function externalRender(filter='missing'){
   externalCompareFilter=filter;
   const target=$('#playlist-integrator-results');
   if(!externalCompareResult){target.innerHTML='Carica un JSON per iniziare.';return}
-  const items=externalSortedItems(externalCompareResult.items?.[filter]||[]);
-  const labels={missing:'Da scaricare',present:'Già presenti',doubtful:'Dubbi'};
+  const source=filter==='all'?['present','doubtful','missing'].flatMap(status=>externalCompareResult.items?.[status]||[]):externalCompareResult.items?.[filter]||[];
+  const items=externalSortedItems(source);
+  const labels={all:'Playlist completa',missing:'Da scaricare',present:'Già presenti',doubtful:'Dubbi'};
   target.classList.remove('empty-state');
   target.innerHTML=items.length
-    ? `<div class="external-list-head"><div><strong>${labels[filter]} · ${items.length}</strong><small>${filter==='missing'?'JSON finale dei brani da scaricare.':filter==='doubtful'?'Controllo manuale: non li considero mancanti sicuri.':'Questi non vanno riscaricati.'}</small></div><small>Ordine: ${escapeHtml(externalSortLabel())}</small></div><div class="external-sortbar"><button type="button" data-external-sort="position">Pos. JSON</button><button type="button" data-external-sort="artist">Artista</button><button type="button" data-external-sort="title">Titolo</button><button type="button" data-external-sort="duration">Durata</button><button type="button" data-external-sort="reason">Motivo</button></div>${items.map(item=>externalRow(item,filter)).join('')}`
+    ? `<div class="external-list-head"><div><strong>${labels[filter]} · ${items.length}</strong><small>${filter==='all'?'Tutti i brani importati, nello stesso ordine del JSON.':filter==='missing'?'JSON finale dei brani da scaricare.':filter==='doubtful'?'Controllo manuale: non li considero mancanti sicuri.':'Questi non vanno riscaricati.'}</small></div><small>Ordine: ${escapeHtml(externalSortLabel())}</small></div><div class="external-sortbar"><button type="button" data-external-sort="position">Pos. JSON</button><button type="button" data-external-sort="artist">Artista</button><button type="button" data-external-sort="title">Titolo</button><button type="button" data-external-sort="duration">Durata</button><button type="button" data-external-sort="reason">Motivo</button></div>${items.map(item=>externalRow(item,filter==='all'?(item.status||'missing'):filter)).join('')}`
     : `<div class="empty-state">Nessun brano in ${labels[filter].toLowerCase()}.</div>`;
 }
 
@@ -102,6 +103,23 @@ async function externalAcquireSpotifyId(button){
   }catch(error){button.disabled=false;spotifyWindow?.close();toast(error.message)}
 }
 
+function externalParseM3u(text){
+  const items=[];let metadata={};
+  for(const rawLine of String(text||'').split(/\r?\n/)){
+    const line=rawLine.trim();
+    if(!line)continue;
+    if(line.toUpperCase().startsWith('#EXTVDJ:')){
+      const artist=line.match(/<artist>([\s\S]*?)<\/artist>/i)?.[1]||'';
+      const title=line.match(/<title>([\s\S]*?)<\/title>/i)?.[1]||'';
+      const duration=line.match(/<songlength>([\d.]+)/i)?.[1]||'';
+      metadata={artist,title,duration};continue;
+    }
+    if(line.startsWith('#'))continue;
+    items.push({...metadata,path:line,position:items.length+1});metadata={};
+  }
+  return items;
+}
+
 function externalResolveDoubtfulTrack(trackId,result){
   if(!externalCompareResult?.items?.doubtful)return;
   const index=externalCompareResult.items.doubtful.findIndex(item=>(item.matches||[]).some(match=>Number(match.id)===Number(trackId)));
@@ -144,8 +162,7 @@ async function externalSearchKrDesk(query){
 
 async function externalLoadFile(file){
   const text=await file.text();
-  const data=JSON.parse(text);
-  const items=externalFlattenJson(data);
+  const items=/\.m3u8?$/i.test(file.name||'')?externalParseM3u(text):externalFlattenJson(JSON.parse(text));
   if(!items.length)throw new Error('JSON valido ma nessuna lista brani trovata.');
   $('#playlist-integrator-results').classList.add('empty-state');
   $('#playlist-integrator-results').textContent=`Confronto ${items.length} righe con la Libreria Definitiva…`;
@@ -168,24 +185,12 @@ async function externalCreatePlaylist(){
   if(!externalRawItems.length){toast('Carica prima un JSON');return}
   const name=window.prompt('Nome della playlist da creare',externalImportedName);
   if(name===null||!name.trim())return;
-  const items=externalCompareResult
-    ? ['present','doubtful','missing'].flatMap(status=>externalCompareResult.items?.[status]||[]).sort((left,right)=>Number(left.position||0)-Number(right.position||0)).map(item=>({
-        ...(item.raw||{}),
-        spotify_id:item.spotify_id||'',
-        spotify_url:item.spotify_url||item.trackLink||'',
-        trackLink:item.trackLink||item.spotify_url||'',
-        artist:item.artist||'',
-        title:item.title||'',
-        album:item.album||'',
-        isrc:item.isrc||'',
-        duration:item.duration||'',
-      }))
-    : externalRawItems;
+  const items=externalRawItems;
   const button=$('#external-create-playlist');
   button.disabled=true;button.textContent='Creo playlist...';
   try{
     const result=await post('playlist-external-create',{name:name.trim(),items});
-    toast(`Playlist creata: ${result.tracks} brani · ${result.missing} mancanti · ${result.doubtful} dubbi esclusi`);
+    toast(`Playlist creata: ${result.tracks}/${result.total} brani · ${result.unavailable} senza file fisico`);
     showView('playlists');
     await loadPlaylists();
     $('#playlist-select').value=result.relative;

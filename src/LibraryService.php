@@ -254,7 +254,7 @@ final class LibraryService
             INSERT INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,genre,archive_area,macro_genre,folder_genre,year,bpm,musical_key,camelot,duration,rating,play_count,last_played,tags,version,energy,singability,danceability,familiarity,risk,bitrate,file_size,file_exists,source,updated_at)
             VALUES(:artist,:title,:normalized_artist,:normalized_title,:file_path,:file_name,:folder,:genre,:archive_area,:macro_genre,:folder_genre,:year,:bpm,:musical_key,:camelot,:duration,:rating,:play_count,:last_played,:tags,:version,3,3,3,3,3,:bitrate,:file_size,:file_exists,'virtualdj',CURRENT_TIMESTAMP)
             ON DUPLICATE KEY UPDATE artist=VALUES(artist),title=VALUES(title),normalized_artist=VALUES(normalized_artist),normalized_title=VALUES(normalized_title),
-                genre=CASE WHEN tracks.genre_manual=1 THEN tracks.genre WHEN tracks.metadata_source='sortlee' AND tracks.genre<>'' THEN tracks.genre WHEN VALUES(genre)<>'' THEN VALUES(genre) ELSE tracks.genre END,
+                genre=CASE WHEN tracks.genre_manual=1 THEN tracks.genre ELSE VALUES(genre) END,
                 archive_area=VALUES(archive_area),macro_genre=VALUES(macro_genre),folder_genre=VALUES(folder_genre),
                 year=CASE WHEN tracks.year_manual=1 THEN tracks.year WHEN tracks.release_date REGEXP '^[0-9]{4}' THEN CAST(SUBSTRING(tracks.release_date,1,4) AS UNSIGNED) ELSE COALESCE(VALUES(year),tracks.year) END,
                 bpm=CASE WHEN tracks.metadata_source='sortlee' AND tracks.bpm IS NOT NULL THEN tracks.bpm ELSE COALESCE(VALUES(bpm),tracks.bpm) END,
@@ -386,13 +386,9 @@ final class LibraryService
     {
         $before=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
         $sync=$this->syncAllVirtualDjDatabases(true);
-        $orphans=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks t WHERE t.source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=t.id)")->fetchColumn();
-        $this->pdo->exec("DELETE FROM tracks WHERE source='virtualdj' AND NOT EXISTS(SELECT 1 FROM track_sources s WHERE s.track_id=tracks.id)");
-        $deletedFolderMissing=$this->removeMissingDeletionFolderTracks();
-        $pruned=$this->pruneToDefinitiveLibrary();
         $after=(int)$this->pdo->query('SELECT COUNT(*) FROM tracks')->fetchColumn();
         $linked=(int)$this->pdo->query('SELECT COUNT(DISTINCT track_id) FROM track_sources')->fetchColumn();
-        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>$orphans + $deletedFolderMissing,'pruned'=>$pruned,'linked'=>$linked,'sync'=>$sync];
+        return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>(int)($sync['removed'] ?? 0),'pruned'=>$sync['pruned'] ?? [],'linked'=>$linked,'sync'=>$sync];
     }
 
     public function pruneToDefinitiveLibrary(): array
@@ -513,7 +509,7 @@ final class LibraryService
         $folders = $this->pdo->query("
             SELECT folder, COUNT(DISTINCT file_path) AS track_count
             FROM tracks
-            WHERE " . workbenchLibrarySqlCondition() . "
+            WHERE file_exists=1 AND " . workbenchLibrarySqlCondition() . "
             GROUP BY folder
             ORDER BY folder
         ")->fetchAll();
@@ -569,7 +565,7 @@ final class LibraryService
 
     private function refreshTrackedFileExistence(): void
     {
-        $rows = $this->pdo->query("SELECT id,file_path,file_exists FROM tracks WHERE " . definitiveMusicSqlCondition())->fetchAll();
+        $rows = $this->pdo->query("SELECT id,file_path,file_exists FROM tracks WHERE " . workbenchLibrarySqlCondition())->fetchAll();
         $update = $this->pdo->prepare('UPDATE tracks SET file_exists = ? WHERE id = ?');
         $this->pdo->beginTransaction();
         try {

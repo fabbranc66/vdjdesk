@@ -192,6 +192,7 @@ try {
     if ($action === 'playlist-external-apply-metadata' && $method === 'POST') jsonResponse((new PlaylistService())->applyExternalMetadata((array)($data['matches']??[])));
     if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[])));
     if ($action === 'playlist-replace-track' && $method === 'POST') jsonResponse((new PlaylistService())->replaceInPlaylist((string)($data['file']??''),(string)($data['old_path']??''),(string)($data['new_path']??'')));
+    if ($action === 'playlist-replace-all-missing' && $method === 'POST') jsonResponse((new PlaylistService())->replaceAllMissingFromLibrary((string)($data['file']??'')));
     if ($action === 'playlist-remove-track' && $method === 'POST') jsonResponse((new PlaylistService())->removeFromPlaylist((string)($data['file']??''),(int)($data['index']??-1),(string)($data['path']??'')));
     if ($action === 'duplicates') jsonResponse(['groups'=>$library->duplicates((int)($_GET['limit']??200)),'total_groups'=>$library->duplicateGroupCount(),'issues'=>$library->issues()]);
     if ($action === 'spotify-duplicates') jsonResponse((new SpotifyDuplicateService($pdo))->groups((int)($_GET['limit'] ?? 100)));
@@ -777,6 +778,7 @@ function apiStudioLocalActions(): array
         'playlist-external-apply-metadata',
         'playlist-save-order',
         'playlist-replace-track',
+        'playlist-replace-all-missing',
         'playlist-remove-track',
         'duplicates',
         'spotify-duplicates',
