@@ -193,6 +193,8 @@ try {
     if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[])));
     if ($action === 'playlist-replace-track' && $method === 'POST') jsonResponse((new PlaylistService())->replaceInPlaylist((string)($data['file']??''),(string)($data['old_path']??''),(string)($data['new_path']??'')));
     if ($action === 'playlist-replace-all-missing' && $method === 'POST') jsonResponse((new PlaylistService())->replaceAllMissingFromLibrary((string)($data['file']??'')));
+    if ($action === 'playlist-spotmate-start' && $method === 'POST') jsonResponse((new PlaylistService())->startSpotmate((string)($data['file']??''),(int)($data['id']??0),(string)($data['old_path']??'')));
+    if ($action === 'playlist-spotmate-status') jsonResponse((new PlaylistService())->spotmateStatus());
     if ($action === 'playlist-remove-track' && $method === 'POST') jsonResponse((new PlaylistService())->removeFromPlaylist((string)($data['file']??''),(int)($data['index']??-1),(string)($data['path']??'')));
     if ($action === 'duplicates') jsonResponse(['groups'=>$library->duplicates((int)($_GET['limit']??200)),'total_groups'=>$library->duplicateGroupCount(),'issues'=>$library->issues()]);
     if ($action === 'spotify-duplicates') jsonResponse((new SpotifyDuplicateService($pdo))->groups((int)($_GET['limit'] ?? 100)));
@@ -472,6 +474,24 @@ try {
         $trackId=(int)($statement->fetchColumn() ?: 0);
         $pdo->prepare("DELETE FROM settings WHERE `key`='spotify_clipboard_lookup_started_at'")->execute();
         jsonResponse(['pending'=>false,'found'=>$trackId>0,'spotify_id'=>$spotifyId,'spotify_url'=>$canonical,'track'=>$trackId>0?$library->find($trackId):null]);
+    }
+    if ($action === 'playlist-spotify-attach' && $method === 'POST') {
+        $artist=trim((string)($data['artist']??''));$title=trim((string)($data['title']??''));$spotifyId=trim((string)($data['spotify_id']??''));$url=trim((string)($data['spotify_url']??''));
+        if($artist===''||$title===''||!preg_match('/^[A-Za-z0-9]{22}$/',$spotifyId))throw new RuntimeException('Dati brano Spotify non validi.');
+        $canonical=$url!==''?$url:'https://open.spotify.com/track/'.$spotifyId;$placeholder='KRDESK://playlist/'.sha1($artist.'|'.$title);
+        $find=$pdo->prepare('SELECT id FROM tracks WHERE (LOWER(TRIM(artist))=LOWER(TRIM(?)) AND LOWER(TRIM(title))=LOWER(TRIM(?))) OR file_path=? ORDER BY file_exists DESC,id LIMIT 1');$find->execute([$artist,$title,$placeholder]);$trackId=(int)($find->fetchColumn()?:0);
+        if($trackId>0)$pdo->prepare("UPDATE tracks SET spotify_id=?,spotify_url=?,spotify_features_status='never',spotify_features_error='',updated_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$spotifyId,$canonical,$trackId]);
+        else{$insert=$pdo->prepare("INSERT INTO tracks(artist,title,normalized_artist,normalized_title,file_path,file_name,folder,spotify_id,spotify_url,tags,auto_tags,auto_tag_overrides,file_exists,source,updated_at) VALUES(?,?,?,?,?,?,?,?,?,'[]','[]','[]',0,'playlist',CURRENT_TIMESTAMP)");$insert->execute([$artist,$title,normalizeText($artist),normalizeTitle($title),$placeholder,$title,'',$spotifyId,$canonical]);$trackId=(int)$pdo->lastInsertId();}
+        jsonResponse(['ok'=>true,'track_id'=>$trackId,'track'=>$library->find($trackId)]);
+    }
+    if ($action === 'playlist-spotify-clipboard-status') {
+        $started=(int)($pdo->query("SELECT value FROM settings WHERE `key`='spotify_clipboard_lookup_started_at'")->fetchColumn() ?: time());
+        if($started<time()-120)jsonResponse(['pending'=>false,'expired'=>true]);
+        $clipboard=trim((string)@shell_exec('powershell.exe -NoProfile -Command "Get-Clipboard -Raw"'));
+        if(!preg_match('~https?://open\\.spotify\\.com/(?:intl-[a-z]+/)?track/([A-Za-z0-9]{22})~i',$clipboard,$match))jsonResponse(['pending'=>true]);
+        $spotifyId=$match[1];$canonical='https://open.spotify.com/track/'.$spotifyId;
+        $pdo->prepare("DELETE FROM settings WHERE `key`='spotify_clipboard_lookup_started_at'")->execute();
+        jsonResponse(['pending'=>false,'spotify_id'=>$spotifyId,'spotify_url'=>$canonical]);
     }
     if ($action === 'replacement-watch-start' && $method === 'POST') jsonResponse((new AudioReplacementService($pdo,$library))->start((int)($data['id']??0)));
     if ($action === 'replacement-watch-status') jsonResponse((new AudioReplacementService($pdo,$library))->status());
@@ -779,6 +799,8 @@ function apiStudioLocalActions(): array
         'playlist-save-order',
         'playlist-replace-track',
         'playlist-replace-all-missing',
+        'playlist-spotmate-start',
+        'playlist-spotmate-status',
         'playlist-remove-track',
         'duplicates',
         'spotify-duplicates',
@@ -810,6 +832,8 @@ function apiStudioLocalActions(): array
         'spotify-clipboard-status',
         'spotify-clipboard-lookup-start',
         'spotify-clipboard-lookup-status',
+        'playlist-spotify-attach',
+        'playlist-spotify-clipboard-status',
         'spotify-identify-features',
         'spotify-identify',
         'spotify-candidates',

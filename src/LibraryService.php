@@ -401,7 +401,7 @@ final class LibraryService
         $nonE=(int)$this->pdo->query("SELECT COUNT(*) FROM tracks WHERE NOT ($libraryCondition)")->fetchColumn();
         $this->pdo->beginTransaction();
         try {
-            $this->pdo->exec("DELETE FROM tracks WHERE NOT ($libraryCondition)");
+            $this->pdo->exec("DELETE FROM tracks WHERE source<>'playlist' AND NOT ($libraryCondition)");
             $this->pdo->exec("DELETE FROM library_databases WHERE label LIKE 'Database drive %' AND drive_letter <> 'E'");
             $this->pdo->commit();
         } catch (Throwable $error) {

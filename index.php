@@ -259,7 +259,7 @@
   <script src="assets/library-sort.js?v=2"></script>
   <script src="assets/formula-settings.js?v=3"></script>
   <script src="assets/analysis.js?v=2"></script>
-  <script src="assets/playlists.js?v=39"></script>
+  <script src="assets/playlists.js?v=60"></script>
   <script src="assets/playlist-integrator.js?v=14"></script>
   <script src="assets/automix-suggestions.js?v=18"></script>
   <script src="assets/spotify-features.js?v=65"></script>
