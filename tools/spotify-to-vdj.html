@@ -27,6 +27,10 @@ p{max-width:980px;color:var(--muted);line-height:1.55}
   box-shadow:0 18px 50px rgba(0,0,0,.28);margin-top:18px
 }
 .section{padding:16px;border-bottom:1px solid var(--line)}
+.input-panel>summary{padding:13px 16px;color:var(--green);font-size:13px;font-weight:800;cursor:pointer;list-style:none;border-bottom:1px solid var(--line)}
+.input-panel>summary::-webkit-details-marker{display:none}
+.input-panel>summary::before{content:'▸';display:inline-block;margin-right:8px;color:var(--blue);transition:transform .15s ease}
+.input-panel[open]>summary::before{transform:rotate(90deg)}
 .section h2{font-size:16px;margin:0 0 7px}
 .hint{color:var(--muted);font-size:13px;line-height:1.45;margin:0 0 12px}
 .setup{display:grid;grid-template-columns:1fr 130px 1fr 180px;gap:10px}
@@ -90,6 +94,8 @@ iframe{display:none}
   <p>Incolla le liste copiate da Sortlee: la pagina unisce <b>artista, data, popolarità, key e genere</b>. Con titoli unici nella cartella già aperta in VirtualDJ, un solo pulsante cerca il brano e aggiorna automaticamente i campi disponibili.</p>
 
   <section class="card">
+    <details class="input-panel" open>
+      <summary>Campi importazione e connessione</summary>
     <div class="section">
       <h2>1. Connessione a VirtualDJ</h2>
       <div class="setup">
@@ -145,6 +151,8 @@ A Dios La Gracia - latin urban"></textarea>
         <span id="parseInfo" class="count">Nessuna lista importata</span>
       </div>
     </div>
+
+    </details>
 
     <div class="bar">
       <button id="runAllBtn" class="update">▶ Esegui tutta la lista</button>

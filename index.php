@@ -153,7 +153,7 @@
         <div><span class="kicker">STRUMENTO LOCALE</span><h2>Spotify to VirtualDJ</h2></div>
         <span class="badge">Network Control 9665</span>
       </div>
-      <iframe class="embedded-tool-frame" src="tools/spotify-to-vdj.html?v=11" title="Spotify to VirtualDJ"></iframe>
+      <iframe class="embedded-tool-frame" src="tools/spotify-to-vdj.html?v=12" title="Spotify to VirtualDJ"></iframe>
     </section>
 
     <section class="view" id="view-duplicates">
@@ -259,7 +259,7 @@
   <script src="assets/library-sort.js?v=2"></script>
   <script src="assets/formula-settings.js?v=3"></script>
   <script src="assets/analysis.js?v=2"></script>
-  <script src="assets/playlists.js?v=60"></script>
+  <script src="assets/playlists.js?v=61"></script>
   <script src="assets/playlist-integrator.js?v=14"></script>
   <script src="assets/automix-suggestions.js?v=18"></script>
   <script src="assets/spotify-features.js?v=65"></script>
