@@ -1,0 +1,98 @@
+{
+  "version": 2,
+  "macro_genres": {
+    "Commerciale": {
+      "independent_stem_analysis": true,
+      "cross_stem_detection": false,
+      "profiles": {
+        "straight_kick": {
+          "maximum_year": 2000,
+          "description": "Brani fino al 2000: probabile struttura a cassa dritta; privilegiare i GROOVE, senza presumere la presenza di DROP. Il segnale audio resta decisivo.",
+          "phase_detection": {
+            "kick": "battere",
+            "hihat": "levare",
+            "phase_subdivisions": 8,
+            "minimum_kick_phase_ratio": 2.0,
+            "minimum_hihat_levare_ratio": 1.5
+          }
+        },
+        "standard": {
+          "description": "Brani successivi al 2000: struttura Commerciale standard determinata dagli stem."
+        }
+      },
+      "reliability_order": [
+        "instruments",
+        "hihat",
+        "kick"
+      ],
+      "stems": {
+        "hihat": {
+          "enabled": true,
+          "cue_types": ["BUILD-UP", "DROP"],
+          "build_up": "Inizio della crescita dello stem, osservato 16, 32 o 48 beat prima del DROP.",
+          "drop": "Cambio strutturale netto dello stem dopo una crescita: può essere una salita oppure un crollo.",
+          "standalone_build_up": "Un BUILD-UP può essere valido anche senza un DROP esplicito quando parte da livello basso e raggiunge un picco netto entro 32 beat.",
+          "minimum_structural_change": 22,
+          "build_distance_beats": [16, 32, 48]
+        },
+        "kick": {
+          "enabled": true,
+          "cue_types": ["GROOVE", "BREAK"],
+          "groove": "Ingresso netto del kick o nuova frase ritmica coerente con ingressi distanti 32 beat.",
+          "break": "Crollo prolungato del kick, esclusa la coda finale del brano.",
+          "short_break": "Accettato anche un BREAK netto di almeno 8 beat quando il kick crolla quasi a zero.",
+          "groove_minimum_rise": 35,
+          "break_maximum_post_level": 12
+        },
+        "instruments": {
+          "enabled": true,
+          "cue_types": ["SOUND", "NOSOUND"],
+          "sound": "Ingresso netto e sostenuto dell'energia dello stem.",
+          "nosound": "Crollo netto quasi a zero dell'energia dello stem.",
+          "strict_detection": true
+        },
+        "vocal": {
+          "enabled": false,
+          "cue_types": ["VOX", "NOVOX"],
+          "status": "Da valutare su altri brani."
+        },
+        "bass": {
+          "enabled": false,
+          "cue_types": [],
+          "status": "Nessun cue dedicato: nel brano campione risulta compreso nel groove."
+        }
+      },
+      "calibration": {
+        "training_samples": 4,
+        "validated_samples": 4,
+        "validated_manual_cues": 35,
+        "matching_tolerance_beats": 2,
+        "samples": [
+          {
+            "analysis_id": "51186399",
+            "status": "validated"
+          },
+          {
+            "analysis_id": "65885150",
+            "status": "validated"
+          },
+          {
+            "analysis_id": "51187594",
+            "profile": "commerciale_straight_kick",
+            "year": 2000,
+            "structure": "groove_only_no_drop",
+            "status": "validated"
+          },
+          {
+            "analysis_id": "51186327",
+            "profile": "commerciale_standard",
+            "year": 2022,
+            "structure": "standalone_build_up_and_short_break",
+            "status": "validated"
+          }
+        ],
+        "status": "Detector allineato ai cue manuali dei quattro campioni disponibili."
+      }
+    }
+  }
+}

@@ -5,6 +5,8 @@
 .playlist-json-button{cursor:pointer;white-space:nowrap}
 .playlist-integrator-stats{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0}
 .playlist-integrator-stats span{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);border-radius:999px;padding:8px 12px;font-size:13px;font-weight:800}
+.playlist-integrator-stats button{border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:inherit;border-radius:999px;padding:8px 12px;font:inherit;font-size:13px;cursor:pointer}
+.playlist-integrator-stats button:hover,.playlist-integrator-stats button:focus{border-color:currentColor;filter:brightness(1.15)}
 .playlist-integrator-stats .ok{color:#7fffd0}
 .playlist-integrator-stats .warn{color:#ffd166}
 .playlist-integrator-stats .missing{color:#ff7a90}
@@ -20,12 +22,19 @@
 .external-sortbar{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 6px}
 .external-sortbar button{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#dce8f7;border-radius:999px;padding:7px 10px;font-weight:800;font-size:12px;cursor:pointer}
 .external-sortbar button:hover{border-color:rgba(68,214,155,.55);color:#fff}
-.external-row{display:flex;justify-content:space-between;gap:14px;align-items:center;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:16px;padding:12px}
+.external-row{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;align-items:center;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.035);border-radius:16px;padding:12px}
+.vdj-track-row.missing{border-color:rgba(255,122,144,.28)}
+.vdj-track-row.present{border-color:rgba(127,255,208,.22)}
+.vdj-track-row.doubtful{border-color:rgba(255,209,102,.25)}
+.vdj-track-row .track-identity strong{border-left:3px solid #4b9dff;padding:6px 0 6px 9px;line-height:1.25}
+.vdj-track-row .track-identity small{font-size:11px;color:#c7d1df}
+.vdj-missing-actions{margin-left:8px}
 .external-row.missing{border-color:rgba(255,122,144,.28)}
 .external-row.present{border-color:rgba(127,255,208,.22)}
 .external-row.doubtful{border-color:rgba(255,209,102,.25)}
 .external-row.safe{border-color:rgba(127,255,208,.28)}
 .external-row.unmatched{border-color:rgba(255,122,144,.20);opacity:.86}
+.external-main>b{display:block;border-left:3px solid #4b9dff;padding:7px 0 7px 9px;line-height:1.25}
 .external-subtitle{margin:10px 0 2px;font-size:15px;color:#fff}
 .external-main{display:grid;gap:4px;min-width:0}
 .external-title-line{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}

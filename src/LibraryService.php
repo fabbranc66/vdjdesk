@@ -391,6 +391,71 @@ final class LibraryService
         return ['ok'=>true,'before'=>$before,'after'=>$after,'removed'=>(int)($sync['removed'] ?? 0),'pruned'=>$sync['pruned'] ?? [],'linked'=>$linked,'sync'=>$sync];
     }
 
+    public function importMetadataFromVirtualDj(array $trackIds): array
+    {
+        $trackIds=array_values(array_unique(array_filter(array_map('intval',$trackIds),static fn(int $id): bool=>$id>0)));
+        if(!$trackIds)return ['ok'=>true,'updated'=>0,'missing'=>0,'items'=>[]];
+
+        $tracks=[];
+        $sources=[];
+        foreach(array_chunk($trackIds,500) as $chunk){
+            $placeholders=implode(',',array_fill(0,count($chunk),'?'));
+            $trackStatement=$this->pdo->prepare("SELECT id,year,genre FROM tracks WHERE id IN ($placeholders)");
+            $trackStatement->execute($chunk);
+            foreach($trackStatement->fetchAll() as $track)$tracks[(int)$track['id']]=['id'=>(int)$track['id'],'year'=>$track['year']!==null?(int)$track['year']:null,'genre'=>(string)($track['genre']??'')];
+
+            $sourceStatement=$this->pdo->prepare("SELECT track_id,database_path,source_file_path FROM track_sources WHERE track_id IN ($placeholders) ORDER BY CASE WHEN UPPER(database_path) LIKE 'E:%' THEN 0 ELSE 1 END,database_path");
+            $sourceStatement->execute($chunk);
+            foreach($sourceStatement->fetchAll() as $source)$sources[(string)$source['database_path']][]=$source;
+        }
+
+        $metadata=[];
+        libxml_use_internal_errors(true);
+        foreach($sources as $databasePath=>$databaseSources){
+            if(!is_file($databasePath))continue;
+            $wanted=[];
+            foreach($databaseSources as $source){
+                $key=mb_strtolower(str_replace('/','\\',trim((string)$source['source_file_path'])),'UTF-8');
+                if($key!=='')$wanted[$key][]=(int)$source['track_id'];
+            }
+            if(!$wanted)continue;
+            $xml=simplexml_load_file($databasePath,SimpleXMLElement::class,LIBXML_NONET|LIBXML_COMPACT);
+            if(!$xml)continue;
+            foreach($xml->Song as $song){
+                $key=mb_strtolower(str_replace('/','\\',trim((string)$song['FilePath'])),'UTF-8');
+                if(!isset($wanted[$key]))continue;
+                $tags=$song->Tags;
+                $year=(int)($tags['Year']??0);
+                $genre=trim((string)($tags['Genre']??''));
+                if($year<1&&$genre==='')continue;
+                foreach($wanted[$key] as $trackId){
+                    $metadata[$trackId]??=['year'=>null,'genre'=>''];
+                    if($metadata[$trackId]['year']===null&&$year>0)$metadata[$trackId]['year']=$year;
+                    if($metadata[$trackId]['genre']===''&&$genre!=='')$metadata[$trackId]['genre']=$genre;
+                }
+            }
+        }
+
+        $update=$this->pdo->prepare("UPDATE tracks SET year=COALESCE(?,year),genre=CASE WHEN ?<>'' THEN ? ELSE genre END,updated_at=CURRENT_TIMESTAMP WHERE id=?");
+        $items=[];
+        $this->pdo->beginTransaction();
+        try{
+            foreach($metadata as $trackId=>$values){
+                $update->execute([$values['year'],$values['genre'],$values['genre'],$trackId]);
+                $items[]=[
+                    'id'=>$trackId,
+                    'year'=>$values['year']??($tracks[$trackId]['year']??null),
+                    'genre'=>$values['genre']!==''?$values['genre']:($tracks[$trackId]['genre']??''),
+                ];
+            }
+            $this->pdo->commit();
+        }catch(Throwable $error){
+            if($this->pdo->inTransaction())$this->pdo->rollBack();
+            throw $error;
+        }
+        return ['ok'=>true,'updated'=>count($items),'missing'=>count($trackIds)-count($items),'items'=>$items];
+    }
+
     public function pruneToDefinitiveLibrary(): array
     {
         $guard = class_exists('DataProtectionService') ? new DataProtectionService($this->pdo) : null;

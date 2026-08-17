@@ -5,18 +5,38 @@ final class PlaylistService
 {
     public function startSpotmate(string $relative,int $trackId,string $oldPath): array
     {
-        $track=db()->prepare("SELECT id,file_exists,source FROM tracks WHERE id=? LIMIT 1");$track->execute([$trackId]);$row=$track->fetch(PDO::FETCH_ASSOC);if(!$row||($row['source']??'')!=='playlist')throw new RuntimeException('Record Playlist non trovato.');
+        $track=db()->prepare("SELECT id,file_exists,source FROM tracks WHERE id=? LIMIT 1");$track->execute([$trackId]);$row=$track->fetch(PDO::FETCH_ASSOC);if(!$row)throw new RuntimeException('Record brano non trovato.');
         $folder=canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Downloads');if(!is_dir($folder))throw new RuntimeException('Cartella Downloads non disponibile.');$snapshot=[];foreach(new DirectoryIterator($folder) as $file){if($file->isFile())$snapshot[canonicalPath($file->getPathname())]=$file->getSize().'|'.$file->getMTime();}
         $save=db()->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');foreach(['playlist_spotmate_file'=>$relative,'playlist_spotmate_old_path'=>$oldPath,'playlist_spotmate_track_id'=>(string)$trackId,'playlist_spotmate_started_at'=>(string)time(),'playlist_spotmate_snapshot'=>json_encode($snapshot,JSON_UNESCAPED_SLASHES)] as $key=>$value)$save->execute([$key,$value]);return ['ok'=>true,'track_id'=>$trackId,'download_folder'=>$folder];
     }
 
     public function spotmateStatus(): array
     {
-        $settings=db()->query("SELECT `key`,value FROM settings WHERE `key` LIKE 'playlist_spotmate_%'")->fetchAll(PDO::FETCH_KEY_PAIR);$trackId=(int)($settings['playlist_spotmate_track_id']??0);$started=(int)($settings['playlist_spotmate_started_at']??0);$relative=(string)($settings['playlist_spotmate_file']??'');if($trackId<1||$started<1||$relative==='')return ['pending'=>false];
+        $settings=db()->query("SELECT `key`,value FROM settings WHERE `key` LIKE 'playlist_spotmate_%'")->fetchAll(PDO::FETCH_KEY_PAIR);$trackId=(int)($settings['playlist_spotmate_track_id']??0);$started=(int)($settings['playlist_spotmate_started_at']??0);$relative=(string)($settings['playlist_spotmate_file']??'');if($trackId<1||$started<1)return ['pending'=>false];
         $folder=canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Downloads');$snapshot=json_decode((string)($settings['playlist_spotmate_snapshot']??'[]'),true)?:[];$new=null;foreach(new DirectoryIterator($folder) as $file){if(!$file->isFile()||preg_match('/\.(part|crdownload|tmp)$/i',$file->getFilename())||$file->getMTime()<=$started||$file->getSize()<500000)continue;$path=canonicalPath($file->getPathname());if(isset($snapshot[$path])&&$snapshot[$path]===$file->getSize().'|'.$file->getMTime())continue;$new=$path;break;}if($new===null)return ['pending'=>true];
         $signature=(string)filesize($new).'|'.(string)filemtime($new);if(($settings['playlist_spotmate_candidate']??'')!==$new||($settings['playlist_spotmate_candidate_signature']??'')!==$signature){$save=db()->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');$save->execute(['playlist_spotmate_candidate',$new]);$save->execute(['playlist_spotmate_candidate_signature',$signature]);return ['pending'=>true,'download_detected'=>true,'download_stable'=>false];}
-        $targetFolder=canonicalPath((string)setting('spotmate_download_folder',technicalAreaPath('01_INBOX\\Da_classificare')));if(!is_dir($targetFolder)&&!mkdir($targetFolder,0775,true)&&!is_dir($targetFolder))throw new RuntimeException('Cartella Da_classificare non disponibile.');$target=$targetFolder.'\\'.basename($new);if(file_exists($target))$target=$targetFolder.'\\'.pathinfo($new,PATHINFO_FILENAME).'_'.date('Ymd_His').'.'.pathinfo($new,PATHINFO_EXTENSION);if(!rename($new,$target))throw new RuntimeException('Impossibile spostare il download in Da_classificare.');$new=canonicalPath($target);
-        $old=(string)($settings['playlist_spotmate_old_path']??'');if($old===''){$oldStmt=db()->prepare('SELECT file_path FROM tracks WHERE id=?');$oldStmt->execute([$trackId]);$old=(string)$oldStmt->fetchColumn();}db()->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,file_exists=1,source='playlist',updated_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$new,basename($new),dirname($new),$trackId]);$this->replaceInPlaylist($relative,$old,$new);db()->exec("DELETE FROM settings WHERE `key` LIKE 'playlist_spotmate_%'");return ['pending'=>false,'replaced'=>true,'download_path'=>$new,'track_id'=>$trackId];
+        $trackInfo=db()->prepare('SELECT artist,title FROM tracks WHERE id=? LIMIT 1');$trackInfo->execute([$trackId]);$track=$trackInfo->fetch(PDO::FETCH_ASSOC)?:[];
+        $targetFolder=canonicalPath((string)setting('spotmate_download_folder',technicalAreaPath('01_INBOX\\Da_classificare')));if(!is_dir($targetFolder)&&!mkdir($targetFolder,0775,true)&&!is_dir($targetFolder))throw new RuntimeException('Cartella Da_classificare non disponibile.');$base=$this->safeDownloadName((string)($track['artist']??''),(string)($track['title']??''));$extension=strtolower(pathinfo($new,PATHINFO_EXTENSION)?:'mp3');$target=$targetFolder.'\\'.$base.'.'.$extension;if(file_exists($target))$target=$targetFolder.'\\'.$base.'_'.date('Ymd_His').'.'.$extension;if(!rename($new,$target))throw new RuntimeException('Impossibile spostare il download in Da_classificare.');$new=canonicalPath($target);
+        $old=(string)($settings['playlist_spotmate_old_path']??'');if($old===''){$oldStmt=db()->prepare('SELECT file_path FROM tracks WHERE id=?');$oldStmt->execute([$trackId]);$old=(string)$oldStmt->fetchColumn();}$audio=$this->inspectAudio($new);$taxonomy=trackTaxonomyFromPath($new);db()->prepare("UPDATE tracks SET file_path=?,file_name=?,folder=?,archive_area=?,macro_genre=?,folder_genre=?,file_size=?,bitrate=?,duration=COALESCE(?,duration),file_exists=1,source='playlist',updated_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$new,basename($new),dirname($new),$taxonomy['archive_area'],$taxonomy['macro_genre'],$taxonomy['folder_genre'],(int)filesize($new),$audio['bitrate'],$audio['duration'],$trackId]);$replaced=0;if($relative!=='')$replaced=(int)($this->replaceInPlaylist($relative,$old,$new)['replaced']??0);db()->exec("DELETE FROM settings WHERE `key` LIKE 'playlist_spotmate_%'");return ['pending'=>false,'replaced'=>true,'playlist_replaced'=>$replaced,'download_path'=>$new,'track_id'=>$trackId,'bitrate'=>$audio['bitrate'],'duration'=>$audio['duration']];
+    }
+
+    private function inspectAudio(string $path): array
+    {
+        $command=['ffprobe','-v','error','-select_streams','a:0','-show_entries','stream=bit_rate:format=duration,bit_rate','-of','json',$path];
+        $process=proc_open($command,[1=>['pipe','w'],2=>['pipe','w']],$pipes,null,null,['bypass_shell'=>true]);
+        $output='';
+        if(is_resource($process)){$output=(string)stream_get_contents($pipes[1]);fclose($pipes[1]);fclose($pipes[2]);proc_close($process);}
+        $data=$output!==''?json_decode($output,true):null;$format=(array)($data['format']??[]);$stream=(array)($data['streams'][0]??[]);
+        $rawBitrate=$stream['bit_rate']??$format['bit_rate']??null;$bitrate=$rawBitrate!==null?(int)round(((float)$rawBitrate)/1000):null;$duration=isset($format['duration'])?(int)round((float)$format['duration']):null;
+        return ['bitrate'=>$bitrate&&$bitrate>0?$bitrate:null,'duration'=>$duration&&$duration>0?$duration:null];
+    }
+
+    private function safeDownloadName(string $artist,string $title): string
+    {
+        $name=trim($artist)!==''&&trim($title)!==''?trim($artist).' - '.trim($title):'download_spotmate';
+        $name=(string)preg_replace('/[<>:"\/\\\\|?*\x00-\x1F]+/u',' ', $name);
+        $name=(string)preg_replace('/\s+/u',' ', $name);
+        return trim($name," .\t\n\r\0\x0B") ?: 'download_spotmate';
     }
     public function replaceInPlaylist(string $relative,string $oldPath,string $newPath): array
     {
@@ -127,6 +147,22 @@ final class PlaylistService
         usort($items,fn(array $a,array $b)=>strcmp($b['modified_at'],$a['modified_at']));return $items;
     }
 
+    public function importSourcePlaylists(): array
+    {
+        $roots=['E:\\VirtualDJ\\MyLists'];
+        $items=[];$seen=[];
+        foreach(array_unique(array_map('canonicalPath',$roots)) as $root){
+            if(!is_dir($root))continue;
+            foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root,FilesystemIterator::SKIP_DOTS)) as $file){
+                if(!$file->isFile()||!in_array(strtolower($file->getExtension()),['m3u','m3u8','vdjfolder'],true))continue;
+                $path=canonicalPath($file->getPathname());$key=strtolower($path);if(isset($seen[$key]))continue;$seen[$key]=true;
+                $items[]=['name'=>$file->getBasename('.'.$file->getExtension()),'path'=>$path,'root'=>$root,'format'=>strtoupper($file->getExtension())];
+            }
+        }
+        usort($items,static fn(array $a,array $b)=>strcasecmp($a['name'],$b['name']));
+        return ['items'=>$items];
+    }
+
     public function create(string $name): array
     {
         $name=trim(preg_replace('/[<>:"\/\\|?*\x00-\x1F]+/u',' ',pathinfo(trim($name),PATHINFO_FILENAME))??'');$name=trim(preg_replace('/\s+/u',' ',$name)??$name);
@@ -134,6 +170,19 @@ final class PlaylistService
         $file=$name.'.vdjfolder';$path=$this->root().'\\'.$file;if(file_exists($path))throw new RuntimeException('Esiste gia una playlist con questo nome.');
         if(file_put_contents($path,"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<VirtualFolder noDuplicates=\"no\">\r\n</VirtualFolder>\r\n")===false)throw new RuntimeException('Creazione playlist non riuscita.');
         return ['ok'=>true,'file'=>$file,'relative'=>$file,'path'=>$path,'tracks'=>0,'format'=>'VDJFOLDER'];
+    }
+
+    public function createM3u(string $name,array $paths): array
+    {
+        $name=trim(preg_replace('/[<>:"\/\\|?*\x00-\x1F]+/u',' ',pathinfo(trim($name),PATHINFO_FILENAME))??'');$name=trim(preg_replace('/\s+/u',' ',$name)??$name);
+        if($name==='')throw new RuntimeException('Inserisci un nome valido per la playlist.');
+        $clean=[];foreach($paths as $trackPath){$trackPath=canonicalPath((string)$trackPath);if($trackPath!==''&&is_file($trackPath))$clean[]=$trackPath;}
+        $clean=array_values(array_unique($clean));
+        if(!$clean)throw new RuntimeException('Nessun brano filtrato disponibile per la playlist.');
+        $file=$name.'.m3u';$path=$this->root().'\\'.$file;
+        if(file_exists($path))throw new RuntimeException('Esiste gia una playlist con questo nome.');
+        if(file_put_contents($path,"#EXTM3U\r\n")===false)throw new RuntimeException('Creazione playlist non riuscita.');
+        return $this->saveOrder($file,$clean)+['file'=>$file,'relative'=>$file];
     }
 
     public function detail(string $relative): array
@@ -185,6 +234,8 @@ final class PlaylistService
             if($entry['spotify_id']!==''&&!empty($bySpotify[$entry['spotify_id']])){$matches=$bySpotify[$entry['spotify_id']];$reason='Spotify ID uguale';}
             elseif($entry['isrc']!==''&&!empty($byIsrc[$entry['isrc']])){$matches=$byIsrc[$entry['isrc']];$reason='ISRC uguale';}
             elseif($entry['normalized_artist']!==''&&$entry['normalized_title']!==''&&!empty($byFingerprint[$entry['normalized_artist'].'|'.$entry['normalized_title']])){$matches=$byFingerprint[$entry['normalized_artist'].'|'.$entry['normalized_title']];$reason='Artista + titolo normalizzati uguali';}
+            else{$search=$library->search(['q'=>trim((string)$entry['artist'].' '.(string)$entry['title']),'limit'=>2]);if(count($search)===1){$matches=$search;$reason='Ricerca E: un solo risultato';}}
+            if($matches&&!$this->fileNameMatchesEntry($matches[0],$entry)){$weak=$matches;$weakReason=$reason.' · nome file non coerente';$matches=[];}
             if($matches){$entry['status']='present';$entry['reason']=$reason;$entry['matches']=array_slice($matches,0,5);$present[]=$entry;continue;}
             $weak=[];$weakReason='';
             if($entry['spotify_id']===''&&$entry['normalized_title']!==''&&!empty($byTitle[$entry['normalized_title']])){$weak=$byTitle[$entry['normalized_title']];$weakReason='Titolo uguale, artista diverso o incompleto';}
@@ -284,6 +335,16 @@ final class PlaylistService
 
     private function pdo(): PDO { return db(); }
 
+    private function fileNameMatchesEntry(array $track,array $entry): bool
+    {
+        $base=normalizeTitle(pathinfo((string)($track['file_path']??$track['file_name']??''),PATHINFO_FILENAME));
+        $title=normalizeTitle((string)($entry['title']??''));
+        if($base===''||$title===''||!str_contains($base,$title))return false;
+        $artists=preg_split('/\s*(?:,|&| feat\.?| ft\.?| x | y )\s*/i',(string)($entry['artist']??''))?:[];
+        foreach($artists as $artist){$artist=normalizeText($artist);if($artist!==''&&str_contains($base,$artist))return true;}
+        return false;
+    }
+
     private function normalizeExternalSpotifyEntry(array $raw,int $position): array
     {
         $spotifyId=trim((string)($raw['spotify_id']??$raw['id']??''));
@@ -293,7 +354,7 @@ final class PlaylistService
         $artistValue=$raw['artist']??$raw['artists']??$raw['artistName']??'';$artist=is_array($artistValue)?implode(', ',array_map('strval',$artistValue)):trim((string)$artistValue);
         $title=trim((string)($raw['title']??$raw['name']??$raw['track']??''));
         $path=trim((string)($raw['path']??$raw['file_path']??$raw['file']??$raw['location']??''));
-        if(($artist===''||$title==='')&&$path!==''){$base=pathinfo(str_replace('\\','/',$path),PATHINFO_FILENAME);if(str_contains($base,' - ')){[$pathArtist,$pathTitle]=array_map('trim',explode(' - ',$base,2));if($artist==='')$artist=$pathArtist;if($title==='')$title=$pathTitle;}elseif($title==='')$title=$base;}
+        if(($artist===''||$title==='')&&$path!==''&&preg_match('/^[A-Za-z]:[\\\\\/]/',$path)){$base=pathinfo(str_replace('\\','/',$path),PATHINFO_FILENAME);if(str_contains($base,' - ')){[$pathArtist,$pathTitle]=array_map('trim',explode(' - ',$base,2));if($artist==='')$artist=$pathArtist;if($title==='')$title=$pathTitle;}elseif($title==='')$title=$base;}
         $duration=(int)preg_replace('/[^0-9]/','',(string)($raw['duration']??$raw['duration_ms']??0));if($duration>10000)$duration=(int)round($duration/1000);
         return ['position'=>$position,'platform'=>(string)($raw['platform']??''),'spotify_id'=>$spotifyId,'trackLink'=>$trackLink,'title'=>$title,'artist'=>$artist,'album'=>(string)($raw['album']??''),'isrc'=>strtoupper(trim((string)($raw['isrc']??''))),'duration'=>$duration,'addedDate'=>$raw['addedDate']??null,'normalized_artist'=>normalizeText($artist),'normalized_title'=>normalizeTitle($title),'raw'=>$raw];
     }
@@ -303,7 +364,7 @@ final class PlaylistService
         $previous=$number===1?12:$number-1;$next=$number===12?1:$number+1;$opposite=$letter==='A'?'B':'A';return [$number.$letter,$previous.$letter,$next.$letter,$number.$opposite];
     }
 
-    public function saveOrder(string $relative,array $paths): array
+    public function saveOrder(string $relative,array $paths,bool $renameByComposition=false,string $requestedName=''): array
     {
         $root=$this->root();$path=canonicalPath($root.'\\'.str_replace(['/','..'],['\\',''],$relative));
         if(!str_starts_with(strtoupper($path),strtoupper($root.'\\'))||!is_file($path))throw new RuntimeException('Playlist non valida.');
@@ -329,12 +390,49 @@ final class PlaylistService
             }
             $lines[]='</VirtualFolder>';
             if(file_put_contents($path,implode("\r\n",$lines)."\r\n")===false)throw new RuntimeException('Salvataggio playlist VirtualDJ non riuscito.');
-            return ['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'VDJFOLDER'];
+            $result=['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'VDJFOLDER'];
+            return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName)):$result;
         }
         $lines=['#EXTM3U'];
         foreach($clean as $trackPath){$metadata->execute([$trackPath]);$track=$metadata->fetch();if(!$track){$stored=$existing[$trackPath]??[];$track=array_shift($stored)?:[];$existing[$trackPath]=$stored;}$label=trim((string)($track['artist']??'').' - '.(string)($track['title']??pathinfo($trackPath,PATHINFO_FILENAME)),' -');$lines[]='#EXTINF:'.(int)($track['duration']??-1).','.$label;$lines[]=$trackPath;}
         if(file_put_contents($path,implode("\r\n",$lines)."\r\n")===false)throw new RuntimeException('Salvataggio playlist non riuscito.');
-        return ['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'M3U'];
+        $result=['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'M3U'];
+        return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName)):$result;
+    }
+
+    private function renameByMacroComposition(string $path,array $paths,string $requestedName=''): array
+    {
+        $counts=[];$metadata=$this->pdo()->prepare('SELECT macro_genre FROM tracks WHERE file_path=? ORDER BY file_exists DESC LIMIT 1');
+        foreach($paths as $trackPath){
+            $metadata->execute([$trackPath]);$macro=trim((string)($metadata->fetchColumn()?:''));
+            if($macro==='')$macro=trim((string)(trackTaxonomyFromPath($trackPath)['macro_genre']??''))?:'Altro';
+            $counts[$macro]=($counts[$macro]??0)+1;
+        }
+        $total=array_sum($counts);if($total<1)return ['file'=>basename($path),'relative'=>ltrim(substr($path,strlen($this->root())),'\\')];
+        $canonical=['Commerciale','Italiana','Latin','Rock_PopRock','Urban'];$order=array_values(array_filter($canonical,fn(string $macro): bool=>isset($counts[$macro])));
+        $extras=array_values(array_diff(array_keys($counts),$order));natcasesort($extras);$order=array_merge($order,array_values($extras));
+        $percentages=[];$assigned=0;
+        foreach($order as $macro){$raw=$counts[$macro]*100/$total;$percentage=(int)floor($raw);$percentages[$macro]=['value'=>$percentage,'fraction'=>$raw-$percentage];$assigned+=$percentage;}
+        $fractions=$percentages;uasort($fractions,fn(array $left,array $right): int=>$right['fraction']<=>$left['fraction']);
+        foreach(array_slice(array_keys($fractions),0,100-$assigned) as $macro)$percentages[$macro]['value']++;
+        $parts=[];foreach($order as $macro){$code=strtoupper(substr((string)preg_replace('/[^A-Za-z0-9]/','',$macro),0,1));$parts[]=($code?:'A').'-'.$percentages[$macro]['value'].'%';}
+        $extension=strtolower(pathinfo($path,PATHINFO_EXTENSION));
+        $compositionName='DjSet - '.implode('_',$parts);
+        $customName=trim(pathinfo(str_replace(['\\','/'], '', $requestedName),PATHINFO_FILENAME));
+        $baseName=$customName!==''?preg_replace('/[<>:"|?*]/','',$customName):$compositionName;
+        if(trim((string)$baseName)==='')$baseName=$compositionName;
+        $target=canonicalPath(dirname($path).'\\'.$baseName.'.'.$extension);
+        $root=$this->root();
+        if(strcasecmp($path,$target)!==0){
+            if(file_exists($target)){
+                if($customName!=='')throw new RuntimeException('Esiste gia una playlist con questo nome.');
+                $suffix=2;
+                do{$suggested=$compositionName.' - '.$suffix;$suggestedPath=canonicalPath(dirname($path).'\\'.$suggested.'.'.$extension);$suffix++;}while(file_exists($suggestedPath));
+                return ['path'=>$path,'file'=>basename($path),'relative'=>ltrim(substr($path,strlen($root)),'\\'),'name_conflict'=>true,'suggested_name'=>$suggested];
+            }
+            if(!rename($path,$target))throw new RuntimeException('Playlist salvata, ma rinomina percentuale non riuscita.');
+        }
+        return ['path'=>$target,'file'=>basename($target),'relative'=>ltrim(substr($target,strlen($root)),'\\')];
     }
 
     private function read(string $path): array

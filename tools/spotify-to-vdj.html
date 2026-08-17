@@ -305,6 +305,7 @@ function addRow(data, index){
   tr.dataset.trackId = data.id || '';
   tr.dataset.searchQuery = data.searchQuery || '';
   tr.dataset.filePath = data.filePath || '';
+  tr.dataset.preserveKrGenre = data.preserveKrGenre ? '1' : '0';
   tr.innerHTML = `
     <td class="n">${index}</td>
     <td class="actions">
@@ -855,12 +856,16 @@ function setSelectedVdjKey(row){
 }
 
 function setSelectedVdjGenre(row){
-  if(!$('#setVdjGenre').checked) return false;
+  if(!shouldUpdateVdjGenre(row)) return false;
   const genre = clean($('.genre', row).value);
   if(!genre || genre === '-') return false;
 
   run(`browsed_song "genre" "${genre}"`);
   return genre;
+}
+
+function shouldUpdateVdjGenre(row){
+  return $('#setVdjGenre').checked && row.dataset.preserveKrGenre !== '1';
 }
 
 async function updateYear(row){
@@ -895,7 +900,7 @@ async function updateYear(row){
   }
 
   const genre = clean($('.genre', row).value);
-  if($('#setVdjGenre').checked && genre && genre !== '-'){
+  if(shouldUpdateVdjGenre(row) && genre && genre !== '-'){
     run(`browsed_song "genre" "${genre}"`);
     await sleep(260);
   }
@@ -933,7 +938,7 @@ function autoSearchAndUpdate(row){
   const genre = clean($('.genre', row).value);
   setStatus(
     `Ricerca inviata nella cartella aperta: <code>${escapeHtml(title)}</code>. ` +
-    `Aggiorno <code>Year = ${year}</code>${$('#setVdjGenre').checked && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${$('#addToAutomix').checked ? ' e aggiungo ad Automix' : ''} tra ${delay} ms…`,
+    `Aggiorno <code>Year = ${year}</code>${shouldUpdateVdjGenre(row) && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${row.dataset.preserveKrGenre === '1' ? ' + Microgenere KR protetto' : ''}${$('#addToAutomix').checked ? ' e aggiungo ad Automix' : ''} tra ${delay} ms…`,
     'success'
   );
 
@@ -943,7 +948,7 @@ function autoSearchAndUpdate(row){
       const titleNow = clean($('.title', row).value);
       setStatus(
         `Aggiornato automaticamente: <code>${escapeHtml(titleNow)}</code> → ` +
-        `<code>Year ${sentYear}</code>${$('#setVdjRating').checked && clean($('.popularity', row).value) !== '' ? ' + classificazione' : ''}${$('#setVdjGenre').checked && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${$('#addToAutomix').checked ? ' + Automix' : ''}.`,
+        `<code>Year ${sentYear}</code>${$('#setVdjRating').checked && clean($('.popularity', row).value) !== '' ? ' + classificazione' : ''}${shouldUpdateVdjGenre(row) && genre && genre !== '-' ? ` + Genere ${escapeHtml(genre)}` : ''}${row.dataset.preserveKrGenre === '1' ? ' + Microgenere KR protetto' : ''}${$('#addToAutomix').checked ? ' + Automix' : ''}.`,
         'success'
       );
     }
@@ -1040,7 +1045,7 @@ async function runWholeList(){
     const keyValue = normalizeKeyValue($('.key', row).value);
     const keyText = $('#setVdjKey').checked && keyValue ? ` + Camelot ${keyValue}` : '';
     const genreValue = clean($('.genre', row).value);
-    const genreText = $('#setVdjGenre').checked && genreValue && genreValue !== '-' ? ` + Genere ${genreValue}` : '';
+    const genreText = shouldUpdateVdjGenre(row) && genreValue && genreValue !== '-' ? ` + Genere ${genreValue}` : (row.dataset.preserveKrGenre === '1' ? ' + Microgenere KR protetto' : '');
     const detail = `${index + 1}/${rows.length} · Cerco: ${title} · Year ${year}${ratingText}${keyText}${genreText}${automixText}`;
     setStatus(`Sequenza ${detail}…`, 'success');
     updateProgress(completed, rows.length, detail);
@@ -1282,13 +1287,21 @@ $('#exportBtn').addEventListener('click', () => {
   setStatus('CSV esportato.', 'success');
 });
 
-window.addEventListener('message', event => {
+window.addEventListener('message', async event => {
   if(event.origin !== location.origin || event.data?.type !== 'vdjdesk-library') return;
   const tracks = Array.isArray(event.data.tracks) ? event.data.tracks : [];
+  let krGenres = new Set();
+  try{
+    const response = await fetch('../api.php?action=vdj-genre-stats',{cache:'no-store'});
+    const data = await response.json();
+    if(response.ok && !data.error)krGenres = new Set((data.items || []).map(item => normalizeMatchText(item.genre)).filter(Boolean));
+  }catch(error){}
   resetTable();
   tracks.forEach((track, index) => {
     const releaseDate = track.release_date || '2026-01-01';
     const year = releaseDate.slice(0, 4);
+    const krGenre = clean(track.genre || '');
+    const preserveKrGenre = krGenre !== '' && krGenres.has(normalizeMatchText(krGenre));
     addRow({
       id: track.id || '',
       artist: track.artist || '',
@@ -1299,7 +1312,8 @@ window.addEventListener('message', event => {
       year,
       popularity: track.popularity ?? '',
       key: track.camelot || track.musical_key || '',
-      genre: track.spotify_genre || track.genre || ''
+      genre: preserveKrGenre ? krGenre : (track.spotify_genre || krGenre),
+      preserveKrGenre
     }, index + 1);
   });
   $('#parseInfo').textContent = `${tracks.length} brani da VDJ Desk`;

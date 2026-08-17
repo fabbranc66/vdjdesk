@@ -1,0 +1,9 @@
+﻿  Main.cpp
+  VDJDeskBridgeManual.cpp
+  Previous IPDB not found, fall back to full compilation.
+VDJDeskBridgeManual.def : warning LNK4104: l'esportazione del simbolo 'DllGetClassObject' dovrebbe essere di tipo PRIVATE
+     Creazione della libreria C:\xampp2\htdocs\vdjdesk\integrations\virtualdj\bridge\VDJDeskBridge_1.1.0_FULL_INFO_DUMP\x64\Release\VDJDeskBridgeManual.lib e dell'oggetto C:\xampp2\htdocs\vdjdesk\integrations\virtualdj\bridge\VDJDeskBridge_1.1.0_FULL_INFO_DUMP\x64\Release\VDJDeskBridgeManual.exp
+  Generazione codice in corso...
+  All 468 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Generazione codice terminata
+  VDJDeskBridgeManual.vcxproj -> C:\xampp2\htdocs\vdjdesk\integrations\virtualdj\bridge\VDJDeskBridge_1.1.0_FULL_INFO_DUMP\x64\Release\VDJDeskBridgeManual.dll
