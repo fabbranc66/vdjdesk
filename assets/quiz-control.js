@@ -1,7 +1,45 @@
 let quizControlQuestion = null;
 let quizControlClockOffset = 0;
+let quizSelectedHistoryId = 0;
+let quizGroups = [];
+let quizHistoryItems = [];
+let quizDraggedQuestionId = 0;
+let quizSelectedGroupId = Number(localStorage.getItem('krdesk_quiz_group_id') || 0);
 let quizPrefillNonce = Number(sessionStorage.getItem('quiz_prefill_nonce') || 0);
 const quizStatusLabels = { draft: 'Pronta', open: 'Risposte aperte', closed: 'Risposte chiuse', revealed: 'Soluzione mostrata' };
+
+function syncQuizGroupSelection() {
+  const select=$('#quiz-group-select');
+  if(select)select.value=String(quizSelectedGroupId);
+  if($('#quiz-question-group-id'))$('#quiz-question-group-id').value=String(quizSelectedGroupId);
+  localStorage.setItem('krdesk_quiz_group_id',String(quizSelectedGroupId));
+  const group=quizGroups.find(item=>item.id===quizSelectedGroupId);
+  const status=$('#quiz-group-status');
+  if(status){status.textContent=group?(group.status==='active'?'Serata attiva':'Pianificata'):'Archivio';status.classList.toggle('blue',Boolean(group&&group.status!=='active'));}
+  if($('#quiz-group-activate')){
+    $('#quiz-group-activate').disabled=!group;
+    $('#quiz-group-activate').textContent=group?.status==='active'?'Riavvia serata':'Avvia serata';
+  }
+  if($('#quiz-group-duplicate'))$('#quiz-group-duplicate').disabled=!group;
+}
+
+function renderQuizGroups(data) {
+  quizGroups=Array.isArray(data.items)?data.items:[];
+  if(quizSelectedGroupId>0&&!quizGroups.some(item=>item.id===quizSelectedGroupId))quizSelectedGroupId=0;
+  if(!localStorage.getItem('krdesk_quiz_group_id'))quizSelectedGroupId=quizGroups.find(item=>item.status==='active')?.id||0;
+  $('#quiz-group-select').innerHTML=`<option value="0">Senza gruppo / Archivio (${Number(data.ungrouped_count||0)})</option>${quizGroups.map(group=>`<option value="${group.id}">${escapeHtml(group.name)}${group.event_date?` · ${escapeHtml(group.event_date.split('-').reverse().join('/'))}`:''} (${group.question_count})${group.status==='active'?' · ATTIVA':''}</option>`).join('')}`;
+  syncQuizGroupSelection();
+}
+
+const quizHistoryUrl=()=>`quiz-history&limit=100&group_id=${quizSelectedGroupId}`;
+
+async function selectQuizQuestion(question) {
+  if(!question)return;
+  quizSelectedHistoryId=Number(question.id);quizControlQuestion=question;
+  const stateData=await api('quiz-state&control=1');
+  renderQuizControl({...stateData,question});
+  $$('#quiz-history [data-quiz-id]').forEach(item=>item.classList.toggle('active',Number(item.dataset.quizId)===quizSelectedHistoryId));
+}
 
 async function setQuizTrack() {
   let track = state.bootstrap?.current;
@@ -57,7 +95,7 @@ function renderQuizControl(stateData) {
     $('#quiz-control-status').textContent = 'In attesa';
     $('#quiz-control-timer').textContent = '--';
     $('#quiz-control-question').innerHTML = '<div class="empty-state">Nessuna domanda preparata.</div>';
-    ['#quiz-launch', '#quiz-close', '#quiz-reveal'].forEach(id => { $(id).disabled = true; });
+    ['#quiz-launch', '#quiz-close'].forEach(id => { $(id).disabled = true; });
     renderQuizLeaderboard(stateData.leaderboard || []);
     return;
   }
@@ -67,17 +105,19 @@ function renderQuizControl(stateData) {
   $('#quiz-control-question').innerHTML = `<small>${escapeHtml([question.artist, question.title].filter(Boolean).join(' - ') || 'Domanda libera')}</small><h3>${escapeHtml(question.question)}</h3><div class="quiz-control-options">${Object.entries(question.options).map(([letter, text]) => `<div class="${question.status === 'revealed' && letter === question.correct_option ? 'correct' : ''}"><b>${letter}</b>${escapeHtml(text)}</div>`).join('')}</div><p>${question.answers_count} risposte ricevute</p>`;
   $('#quiz-launch').disabled = question.status !== 'draft';
   $('#quiz-close').disabled = question.status !== 'open';
-  $('#quiz-reveal').disabled = !['open', 'closed'].includes(question.status);
   renderQuizLeaderboard(stateData.leaderboard || []);
 }
 
 async function loadQuizControl() {
   try {
     await setQuizTrack();
-    const [stateData, history, network] = await Promise.all([api('quiz-state&control=1'), api('quiz-history'), api('network-info')]);
-    renderQuizControl(stateData);
-    $('#quiz-history').innerHTML = history.items.length
-      ? history.items.map(item => `<button type="button" class="quiz-history-row ${quizControlQuestion?.id === item.id ? 'active' : ''}" data-quiz-id="${item.id}"><span class="badge">${quizStatusLabels[item.status] || item.status}</span><strong>${escapeHtml(item.question)}</strong><small>${escapeHtml([item.artist, item.title].filter(Boolean).join(' - ') || 'Domanda libera')} | ${item.answers_count} risposte</small></button>`).join('')
+    const [stateData, groupsData, network] = await Promise.all([api('quiz-state&control=1'),api('quiz-groups'),api('network-info')]);
+    renderQuizGroups(groupsData);
+    const history=await api(quizHistoryUrl());quizHistoryItems=history.items||[];
+    const selectedQuestion=quizSelectedHistoryId?quizHistoryItems.find(item=>item.id===quizSelectedHistoryId):null;
+    renderQuizControl(selectedQuestion?{...stateData,question:selectedQuestion}:stateData);
+    $('#quiz-history').innerHTML = quizHistoryItems.length
+      ? quizHistoryItems.map((item,index) => `<button type="button" draggable="true" class="quiz-history-row ${quizControlQuestion?.id === item.id ? 'active' : ''}" data-quiz-id="${item.id}"><span class="badge">${index+1}</span><span class="badge">${quizStatusLabels[item.status] || item.status}</span><strong>${escapeHtml(item.question)}</strong><small>${escapeHtml([item.artist, item.title].filter(Boolean).join(' - ') || 'Domanda libera')} | ${item.answers_count} risposte</small></button>`).join('')
       : '<div class="empty-state">Nessuna domanda.</div>';
     $('#quiz-public-link').href = network.public_url;
     $('#quiz-screen-link').href = network.screen_url;
@@ -129,9 +169,13 @@ $('#quiz-create-form').addEventListener('submit', async event => {
   const button = event.submitter;
   button.disabled = true;
   try {
-    const result = await post('quiz-create', Object.fromEntries(new FormData(event.currentTarget)));
+    const payload=Object.fromEntries(new FormData(event.currentTarget));
+    payload.group_id=Number($('#quiz-group-select')?.value||0);
+    const result = await post('quiz-create', payload);
+    quizSelectedHistoryId = 0;
     quizControlQuestion = result.question;
     event.currentTarget.reset();
+    syncQuizGroupSelection();
     setQuizTrack();
     toast('Domanda salvata e pronta al lancio');
     await loadQuizControl();
@@ -174,32 +218,59 @@ $('#quiz-codex-suggest').addEventListener('click', async event => {
 $('#quiz-history').addEventListener('click', async event => {
   const row = event.target.closest('[data-quiz-id]');
   if (!row) return;
-  const history = await api('quiz-history');
-  quizControlQuestion = history.items.find(item => item.id === Number(row.dataset.quizId)) || null;
-  if (quizControlQuestion) {
-    const stateData = await api('quiz-state&control=1');
-    renderQuizControl({ question: quizControlQuestion, leaderboard: stateData.leaderboard, participants: stateData.participants, server_time_ms: stateData.server_time_ms });
-  }
+  await selectQuizQuestion(quizHistoryItems.find(item=>item.id===Number(row.dataset.quizId))||null);
 });
+
+$('#quiz-group-select').addEventListener('change',async event=>{
+  quizSelectedGroupId=Number(event.target.value||0);quizSelectedHistoryId=0;quizControlQuestion=null;syncQuizGroupSelection();await loadQuizControl();
+});
+
+$('#quiz-group-create').addEventListener('click',async event=>{
+  const button=event.currentTarget,name=$('#quiz-group-name').value.trim(),eventDate=$('#quiz-group-date').value;
+  if(!name){toast('Inserisci il nome del gruppo quiz');return}
+  button.disabled=true;try{const result=await post('quiz-group-create',{name,event_date:eventDate});quizSelectedGroupId=Number(result.id);quizSelectedHistoryId=0;$('#quiz-group-name').value='';await loadQuizControl();toast('Gruppo quiz creato')}catch(error){toast(error.message)}finally{button.disabled=false}
+});
+
+$('#quiz-group-activate').addEventListener('click',async event=>{
+  if(quizSelectedGroupId<1)return;event.currentTarget.disabled=true;
+  try{const result=await post('quiz-group-activate',{id:quizSelectedGroupId});quizSelectedHistoryId=0;await loadQuizControl();toast(`Serata avviata: ${result.questions} domande pronte`)}catch(error){toast(error.message)}
+});
+
+$('#quiz-group-duplicate').addEventListener('click',async event=>{
+  const group=quizGroups.find(item=>item.id===quizSelectedGroupId);if(!group)return;
+  const name=prompt('Nome del nuovo gruppo:',`${group.name} - copia`);if(name===null||!name.trim())return;
+  const eventDate=prompt('Data serata YYYY-MM-DD (facoltativa):','');if(eventDate===null)return;
+  event.currentTarget.disabled=true;try{const result=await post('quiz-group-duplicate',{id:group.id,name:name.trim(),event_date:eventDate.trim()});quizSelectedGroupId=Number(result.id);quizSelectedHistoryId=0;await loadQuizControl();toast(`Gruppo duplicato: ${result.questions} domande`)}catch(error){toast(error.message)}finally{event.currentTarget.disabled=false}
+});
+
+$('#quiz-next-question').addEventListener('click',async()=>{
+  if(!quizHistoryItems.length){toast('Nessuna domanda nel gruppo');return}
+  const currentIndex=quizHistoryItems.findIndex(item=>item.id===Number(quizControlQuestion?.id||0));
+  const next=quizHistoryItems[currentIndex>=0?(currentIndex+1)%quizHistoryItems.length:0];await selectQuizQuestion(next);
+});
+
+$('#quiz-history').addEventListener('dragstart',event=>{const row=event.target.closest('[data-quiz-id]');if(!row)return;quizDraggedQuestionId=Number(row.dataset.quizId);row.classList.add('dragging')});
+$('#quiz-history').addEventListener('dragover',event=>{const row=event.target.closest('[data-quiz-id]');if(!row||Number(row.dataset.quizId)===quizDraggedQuestionId)return;event.preventDefault();$$('#quiz-history .drag-over').forEach(item=>item.classList.remove('drag-over'));row.classList.add('drag-over')});
+$('#quiz-history').addEventListener('drop',async event=>{const target=event.target.closest('[data-quiz-id]');if(!target||!quizDraggedQuestionId)return;event.preventDefault();const source=$(`#quiz-history [data-quiz-id="${quizDraggedQuestionId}"]`);if(source&&source!==target)target.before(source);$$('#quiz-history .drag-over,#quiz-history .dragging').forEach(item=>item.classList.remove('drag-over','dragging'));const ids=$$('#quiz-history [data-quiz-id]').map(item=>Number(item.dataset.quizId));quizDraggedQuestionId=0;try{await post('quiz-group-reorder',{group_id:quizSelectedGroupId,ids});await loadQuizControl();toast('Ordine domande salvato')}catch(error){toast(error.message)}});
+$('#quiz-history').addEventListener('dragend',()=>{$$('#quiz-history .drag-over,#quiz-history .dragging').forEach(item=>item.classList.remove('drag-over','dragging'));quizDraggedQuestionId=0});
 
 $('#quiz-launch').addEventListener('click', async () => {
   if (!quizControlQuestion) return;
-  await post('quiz-launch', { id: quizControlQuestion.id });
-  toast('Domanda lanciata');
-  await loadQuizControl();
+  try {
+    const result=await post('quiz-launch', { id: quizControlQuestion.id });
+    quizSelectedHistoryId = 0;
+    quizControlQuestion=result.question;
+    toast('Domanda lanciata sul player');
+    await loadQuizControl();
+  } catch(error) {
+    toast(error.message);
+  }
 });
 
 $('#quiz-close').addEventListener('click', async () => {
   if (!quizControlQuestion) return;
   await post('quiz-close', { id: quizControlQuestion.id });
   toast('Risposte chiuse');
-  await loadQuizControl();
-});
-
-$('#quiz-reveal').addEventListener('click', async () => {
-  if (!quizControlQuestion) return;
-  await post('quiz-reveal', { id: quizControlQuestion.id });
-  toast('Soluzione mostrata');
   await loadQuizControl();
 });
 
@@ -219,7 +290,8 @@ window.addEventListener('vdj-live-track-change', () => { setQuizTrack(); });
 async function pollQuizQuestionCard() {
   if (!$('#view-quiz')?.classList.contains('active')) return;
   try {
-    renderQuizControl(await api('quiz-state&control=1'));
+    const stateData=await api('quiz-state&control=1');
+    renderQuizControl(quizSelectedHistoryId&&quizControlQuestion?{...stateData,question:quizControlQuestion}:stateData);
   } catch (error) {}
 }
 

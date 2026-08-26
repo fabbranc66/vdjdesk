@@ -58,6 +58,6 @@
   <p class="privacy-note">Funziona solo sulla rete locale dell&rsquo;evento.</p>
 </main>
 <script src="assets/request.js?v=9"></script>
-<script src="assets/quiz-public.js?v=7"></script>
+<script src="assets/quiz-public.js?v=9"></script>
 </body>
 </html>

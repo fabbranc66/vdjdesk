@@ -275,6 +275,14 @@ function migrateMariaDb(PDO $pdo): void
     if(!in_array('left_at',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN left_at DATETIME NULL');
     if(!in_array('status',$participantColumns,true))$pdo->exec("ALTER TABLE quiz_participants ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'");
     if(!in_array('rejoin_requested_at',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN rejoin_requested_at DATETIME NULL');
+    $questionColumns=array_column($pdo->query('SHOW COLUMNS FROM quiz_questions')->fetchAll(),'Field');
+    if(!in_array('group_id',$questionColumns,true))$pdo->exec('ALTER TABLE quiz_questions ADD COLUMN group_id INT UNSIGNED NULL AFTER track_id');
+    if(!in_array('sort_order',$questionColumns,true))$pdo->exec('ALTER TABLE quiz_questions ADD COLUMN sort_order INT NOT NULL DEFAULT 0');
+    $pdo->exec('UPDATE quiz_questions SET sort_order=id WHERE sort_order=0');
+    $questionIndexes=array_column($pdo->query("SHOW INDEX FROM quiz_questions WHERE Key_name='idx_quiz_questions_group_order'")->fetchAll(),'Key_name');
+    if(!$questionIndexes)$pdo->exec('CREATE INDEX idx_quiz_questions_group_order ON quiz_questions(group_id,sort_order)');
+    $groupForeignKey=$pdo->query("SELECT COUNT(*) FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA=DATABASE() AND TABLE_NAME='quiz_questions' AND CONSTRAINT_NAME='fk_quiz_question_group'")->fetchColumn();
+    if(!(int)$groupForeignKey)$pdo->exec('ALTER TABLE quiz_questions ADD CONSTRAINT fk_quiz_question_group FOREIGN KEY(group_id) REFERENCES quiz_groups(id) ON DELETE SET NULL');
     $requestColumns=array_column($pdo->query('SHOW COLUMNS FROM requests')->fetchAll(),'Field');
     if(!in_array('public_token',$requestColumns,true))$pdo->exec('ALTER TABLE requests ADD COLUMN public_token CHAR(36) NULL');
     if(!in_array('client_token',$requestColumns,true))$pdo->exec("ALTER TABLE requests ADD COLUMN client_token VARCHAR(80) NOT NULL DEFAULT ''");

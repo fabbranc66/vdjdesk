@@ -47,14 +47,22 @@ CREATE TABLE IF NOT EXISTS quiz_participants (
     last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, is_online TINYINT NOT NULL DEFAULT 1,
     left_at DATETIME NULL, status VARCHAR(20) NOT NULL DEFAULT 'active', rejoin_requested_at DATETIME NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS quiz_groups (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(150) NOT NULL,
+    event_date DATE NULL, description VARCHAR(500) NOT NULL DEFAULT '',
+    status VARCHAR(20) NOT NULL DEFAULT 'planned', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_quiz_groups_status_date(status,event_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS quiz_questions (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, track_id BIGINT UNSIGNED NULL,
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, track_id BIGINT UNSIGNED NULL, group_id INT UNSIGNED NULL,
     question_text VARCHAR(500) NOT NULL, option_a VARCHAR(255) NOT NULL, option_b VARCHAR(255) NOT NULL,
     option_c VARCHAR(255) NOT NULL, option_d VARCHAR(255) NOT NULL, correct_option CHAR(1) NOT NULL,
     duration_seconds SMALLINT UNSIGNED NOT NULL DEFAULT 20, status VARCHAR(20) NOT NULL DEFAULT 'draft',
     opened_at DATETIME NULL, closes_at DATETIME NULL, revealed_at DATETIME NULL,
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_quiz_questions_status(status),
-    CONSTRAINT fk_quiz_question_track FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE SET NULL
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, sort_order INT NOT NULL DEFAULT 0,
+    KEY idx_quiz_questions_status(status), KEY idx_quiz_questions_group_order(group_id,sort_order),
+    CONSTRAINT fk_quiz_question_track FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE SET NULL,
+    CONSTRAINT fk_quiz_question_group FOREIGN KEY(group_id) REFERENCES quiz_groups(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS quiz_answers (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, question_id INT UNSIGNED NOT NULL,

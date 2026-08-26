@@ -2,13 +2,18 @@ const quizTokenKey='kr_quiz_token';
 let quizToken=localStorage.getItem(quizTokenKey)||'';
 let quizPlayerState=null;
 let quizPublicClockOffset=0;
+let quizLastOpenQuestionId=0;
+
+function activatePublicMode(mode){
+  document.querySelectorAll('[data-public-mode]').forEach(item=>item.classList.toggle('active',item.dataset.publicMode===mode));
+  $('#public-requests').classList.toggle('hidden',mode!=='requests');
+  $('#public-quiz').classList.toggle('hidden',mode!=='quiz');
+}
 
 document.addEventListener('click',event=>{
   const tab=event.target.closest('[data-public-mode]');
   if(!tab)return;
-  document.querySelectorAll('[data-public-mode]').forEach(item=>item.classList.toggle('active',item===tab));
-  $('#public-requests').classList.toggle('hidden',tab.dataset.publicMode!=='requests');
-  $('#public-quiz').classList.toggle('hidden',tab.dataset.publicMode!=='quiz');
+  activatePublicMode(tab.dataset.publicMode);
   if(tab.dataset.publicMode==='quiz')refreshPublicQuiz();
 });
 
@@ -46,8 +51,13 @@ function renderPublicQuiz(data){
     return;
   }
   const question=data.question;
+  if(question?.status==='open'&&Number(question.id)!==quizLastOpenQuestionId){
+    quizLastOpenQuestionId=Number(question.id);
+    activatePublicMode('quiz');
+  }
   const timerTarget=question?.status==='revealed'?question.revealed_until_ms:question?.closes_at_ms;
   const seconds=question&&['open','revealed'].includes(question.status)&&timerTarget?Math.max(0,Math.ceil((Number(timerTarget)-(Date.now()+quizPublicClockOffset))/1000)):null;
+  let rankingInContent=false;
   $('#quiz-player-timer').textContent=seconds===null?'--':seconds;
   if(!question){
     $('#quiz-player-content').innerHTML='<div class="quiz-waiting">In attesa della prima domanda…</div>';
@@ -55,11 +65,12 @@ function renderPublicQuiz(data){
     $('#quiz-player-content').innerHTML='<div class="quiz-waiting">La prossima domanda è quasi pronta…</div>';
   }else if(question.status==='closed'){
     $('#quiz-player-timer').textContent='--';
-    $('#quiz-player-content').innerHTML='<div class="quiz-waiting">Risposte chiuse.<br>Guarda la classifica.</div>';
+    rankingInContent=true;
+    $('#quiz-player-content').innerHTML=`<div class="quiz-waiting"><h2>Classifica della serata</h2>${data.leaderboard.length?quizRanking(data.leaderboard):'<p>Nessun punteggio registrato.</p>'}</div>`;
   }else{
     $('#quiz-player-content').innerHTML=`<small>${escapeHtml([question.artist,question.title].filter(Boolean).join(' — '))}</small><h2>${escapeHtml(question.question)}</h2><div class="quiz-answer-grid">${Object.entries(question.options).map(([letter,text])=>`<button type="button" data-quiz-answer="${letter}" class="quiz-answer ${question.selected_option===letter?'selected':''} ${question.status==='revealed'&&question.correct_option===letter?'correct':''}" ${question.answered||question.status!=='open'?'disabled':''}><b>${letter}</b><span>${escapeHtml(text)}</span></button>`).join('')}</div><p>${question.answered?'Risposta registrata. Attendi la soluzione.':question.status==='open'?'Scegli una risposta':'Risposte chiuse.'}</p>`;
   }
-  $('#quiz-player-ranking').innerHTML=data.leaderboard.length?`<h3>Classifica</h3>${quizRanking(data.leaderboard)}`:'';
+  $('#quiz-player-ranking').innerHTML=!rankingInContent&&data.leaderboard.length?`<h3>Classifica</h3>${quizRanking(data.leaderboard)}`:'';
 }
 
 $('#quiz-player-content').addEventListener('click',async event=>{
@@ -78,6 +89,7 @@ async function quizHeartbeat(){if(!quizToken)return;try{await fetch('api.php?act
 window.addEventListener('beforeunload',event=>{const question=quizPlayerState?.question;if(question?.status==='open'&&!question.answered){event.preventDefault();event.returnValue=''}});
 window.addEventListener('pagehide',()=>{if(quizToken)navigator.sendBeacon('api.php?action=quiz-leave',new Blob([JSON.stringify({token:quizToken})],{type:'application/json'}))});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')quizHeartbeat()});
+if(quizToken)activatePublicMode('quiz');
 refreshPublicQuiz();
 quizHeartbeat();
 setInterval(refreshPublicQuiz,700);

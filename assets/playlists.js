@@ -59,8 +59,33 @@ async function openPlaylist(relative){
 }
 
 function playlistLibraryQuery(track){return [track.artist,track.title].filter(Boolean).join(' ')||String(track.file_name||track.file_path||'').replace(/\.[^.]+$/,'')}
+function playlistCrc32(value){
+  let crc=0xFFFFFFFF;
+  for(const byte of new TextEncoder().encode(String(value||'').trim().toLocaleLowerCase('it'))){
+    crc^=byte;
+    for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xEDB88320:0);
+  }
+  return (crc^0xFFFFFFFF)>>>0;
+}
+function playlistVdjColor(track){
+  const bases={Commerciale:[37,99,235],Italiana:[34,197,94],Latin:[249,115,22],Rock_PopRock:[239,68,68],Urban:[168,85,247]};
+  const base=bases[String(track.macro_genre||'')];
+  if(!base)return '';
+  const genre=String(track.genre||'').trim(),levels=[-.28,-.14,0,.14,.28],level=genre?levels[playlistCrc32(genre)%levels.length]:0;
+  const rgb=base.map(component=>Math.max(0,Math.min(255,Math.round(level<0?component*(1+level):component+(255-component)*level))));
+  return `#${rgb.map(component=>component.toString(16).padStart(2,'0')).join('').toUpperCase()}`;
+}
 function playlistLibrarySearchQuery(track){
   return playlistLibraryQuery(track).replace(/['’`]/g,' ').replace(/[^A-Za-z0-9À-ÿ]+/g,' ').replace(/\s+/g,' ').trim();
+}
+function openPlaylistSuggestions(track){
+  const file=$('#playlist-select').value,afterIndex=playlistAllTracks.indexOf(track),trackId=Number(track?.id||0);
+  if(!file||afterIndex<0||trackId<1){toast('Brano playlist non disponibile per i suggerimenti');return}
+  rememberPlaylistScroll();
+  window.playlistSuggestionContext={file,afterIndex,afterPath:track.file_path,scroll:playlistSavedScroll};
+  const select=$('#current-track-select');
+  if(!select.querySelector(`option[value="${trackId}"]`))select.insertAdjacentHTML('afterbegin',`<option value="${trackId}">${escapeHtml(track.artist)} - ${escapeHtml(track.title)}</option>`);
+  select.value=String(trackId);state.currentMode='same';showView('suggestions');
 }
 function playlistCandidateQueries(track){
   const artist=String(track.artist||'').trim(),title=String(track.title||'').trim();
@@ -186,7 +211,8 @@ async function replaceAllPlaylistMissingFromLibrary(button){
 function renderPlaylistTable(){
   const target=$('#playlist-results');
   $('#playlist-count').textContent=`${state.tracks.length} di ${playlistAllTracks.length}`;
-  target.innerHTML=state.tracks.length?state.tracks.map((track,index)=>`<article class="track-row ${track._playlist_exists?'':'playlist-missing'}" draggable="true" data-id="${track.id}" data-playlist-index="${index}" data-playlist-path="${escapeHtml(track.file_path)}"><div class="track-identity"><strong>${escapeHtml(track.artist||'Artista sconosciuto')} - ${escapeHtml(track.title)} ${!track._playlist_exists?`<a class="playlist-library-dot spotify" target="vdjdesk_spotify" href="https://open.spotify.com/search/${encodeURIComponent(playlistLibraryQuery(track))}" title="Cerca questo brano su Spotify">S</a>`:''}<button type="button" class="playlist-library-dot" data-query="${escapeHtml(playlistLibrarySearchQuery(track))}" data-path="${escapeHtml(track.file_path)}" title="Cerca questo brano nella libreria completa E" aria-label="Cerca in libreria E">E</button>${Number(track.id)>0?`<button type="button" class="playlist-audio-analysis${playlistAudioAnalysisIds.has(Number(track.id))?' analyzed':''}" data-track-id="${track.id}" title="Apri in Analisi Audio" aria-label="Apri in Analisi Audio">∿</button>`:''}</strong><small title="${escapeHtml(track.file_path)}">${escapeHtml(track.file_path)}</small></div><div><span class="cell-label">BPM</span><span class="cell-value">${track.bpm??'-'}</span></div><div><span class="cell-label">KEY / SCALA</span><span class="cell-value">${escapeHtml(track.camelot||track.musical_key||'-')} ${scaleMode(track)}</span></div><div class="hide-mobile"><span class="cell-label">DURATA</span><span class="cell-value">${formatDuration(track.duration)}</span></div><div class="hide-tablet hide-mobile"><span class="cell-label">GENERE / ANNO</span><span class="cell-value">${escapeHtml(track.folder_genre||track.genre||'-')} / ${escapeHtml(track.genre||'-')} - ${track.year||'-'}</span></div><div class="track-tags hide-mobile">${track.version?`<span class="badge blue">${escapeHtml(track.version)}</span>`:''}${(track.tags||[]).slice(0,2).map(tag=>`<span class="badge">${escapeHtml(tag)}</span>`).join('')}</div><div class="track-actions">${track.id?'<button class="more-button">...</button><div class="action-menu"><button data-action="edit">Tag e punteggi</button><button data-action="played">Segna come suonato</button><button data-action="queue">Aggiungi alla coda</button><button type="button" class="playlist-remove-row">Rimuovi da playlist</button></div>':`<button type="button" class="button ghost playlist-replace-missing" data-path="${escapeHtml(track.file_path)}">Inserisci da E</button><button type="button" class="button ghost playlist-remove-row">Rimuovi</button>`}</div></article>`).join(''):'<div class="empty-state panel">Nessun brano corrisponde ai filtri.</div>';
+  target.innerHTML=state.tracks.length?state.tracks.map((track,index)=>{const vdjColor=playlistVdjColor(track);return `<article class="track-row ${track._playlist_exists?'':'playlist-missing'}${vdjColor?' playlist-vdj-colored':''}"${vdjColor?` style="--playlist-vdj-color:${vdjColor}"`:''} draggable="true" data-id="${track.id}" data-playlist-index="${index}" data-playlist-path="${escapeHtml(track.file_path)}"><div class="track-identity"><strong>${escapeHtml(track.artist||'Artista sconosciuto')} - ${escapeHtml(track.title)}</strong><div class="playlist-title-actions">${!track._playlist_exists?`<a class="playlist-library-dot spotify" target="vdjdesk_spotify" href="https://open.spotify.com/search/${encodeURIComponent(playlistLibraryQuery(track))}" title="Cerca questo brano su Spotify">S</a>`:''}<button type="button" class="playlist-library-dot" data-query="${escapeHtml(playlistLibrarySearchQuery(track))}" data-path="${escapeHtml(track.file_path)}" title="Cerca questo brano nella libreria completa E" aria-label="Cerca in libreria E">E</button>${Number(track.id)>0?`<button type="button" class="playlist-audio-analysis${playlistAudioAnalysisIds.has(Number(track.id))?' analyzed':''}" data-track-id="${track.id}" title="Apri in Analisi Audio" aria-label="Apri in Analisi Audio">∿</button><button type="button" class="playlist-suggest-next" title="Suggerisci il brano successivo" aria-label="Suggerisci il brano successivo">✦</button>`:''}</div><small title="${escapeHtml(track.file_path)}">${escapeHtml(track.file_path)}</small></div><div><span class="cell-label">BPM</span><span class="cell-value">${track.bpm??'-'}</span></div><div><span class="cell-label">KEY / SCALA</span><span class="cell-value">${escapeHtml(track.camelot||track.musical_key||'-')} ${scaleMode(track)}</span></div><div class="hide-mobile"><span class="cell-label">DURATA</span><span class="cell-value">${formatDuration(track.duration)}</span></div><div class="hide-tablet hide-mobile"><span class="cell-label">GENERE / ANNO</span><span class="cell-value">${escapeHtml(track.folder_genre||track.genre||'-')} / ${escapeHtml(track.genre||'-')} - ${track.year||'-'}</span></div><div class="track-tags hide-mobile">${track.version?`<span class="badge blue">${escapeHtml(track.version)}</span>`:''}${(track.tags||[]).slice(0,2).map(tag=>`<span class="badge">${escapeHtml(tag)}</span>`).join('')}</div><div class="track-actions">${track.id?'<button class="more-button">...</button><div class="action-menu"><button data-action="edit">Tag e punteggi</button><button data-action="played">Segna come suonato</button><button data-action="queue">Aggiungi alla coda</button><button type="button" class="playlist-remove-row">Rimuovi da playlist</button></div>':`<button type="button" class="button ghost playlist-replace-missing" data-path="${escapeHtml(track.file_path)}">Inserisci da E</button><button type="button" class="button ghost playlist-remove-row">Rimuovi</button>`}</div></article>`}).join(''):'<div class="empty-state panel">Nessun brano corrisponde ai filtri.</div>';
+  $$('#playlist-results .track-identity>small').forEach(item=>item.remove());
   if(typeof decorateSpotifyTracks==='function')decorateSpotifyTracks();
   updatePlaylistSpotifyActions();
   refreshPlaylistAudioAnalysisStatuses().catch(()=>{});
@@ -206,6 +232,12 @@ async function refreshPlaylistAudioAnalysisStatuses(){
 }
 
 document.addEventListener('click',async event=>{
+  const suggestionButton=event.target.closest('.playlist-suggest-next');
+  if(suggestionButton){
+    event.preventDefault();event.stopPropagation();
+    const visibleIndex=Number(suggestionButton.closest('[data-playlist-index]')?.dataset.playlistIndex??-1);
+    openPlaylistSuggestions(state.tracks[visibleIndex]||null);return;
+  }
   const button=event.target.closest('.playlist-audio-analysis');
   if(!button)return;
   event.preventDefault();
@@ -257,18 +289,24 @@ function playlistCamelotDistance(left,right){
   const numeric=Math.min(Math.abs(a.number-b.number),12-Math.abs(a.number-b.number));
   return numeric+(a.letter===b.letter?0:1);
 }
-function playlistCamelotRecommended(left,right,genreChange=false){
+function playlistCamelotRecommended(left,right){
   if(!left)return true;
   const distance=playlistCamelotDistance(left,right);
-  return distance<=2||(genreChange&&distance===6);
+  return distance<=2;
 }
+function playlistMacroBpmDifference(left,right){
+  const leftBpm=Number(left?.bpm||0),rightBpm=Number(right?.bpm||0);
+  return leftBpm>0&&rightBpm>0?Math.abs(leftBpm-rightBpm):Number.POSITIVE_INFINITY;
+}
+function playlistMacroBpmCompatible(left,right){return !left||playlistMacroBpmDifference(left,right)<=15}
 function takePlaylistCamelotBlock(queue,size,previousTrack,macro){
   const block=[];let current=previousTrack,fallbacks=0;
   while(block.length<size&&queue.length){
-    const ranked=queue.map((track,index)=>({track,index,distance:current?playlistCamelotDistance(current,track):0,bpm:current?mixableBpmDifference(current,track):Number(track.bpm||0)}))
+    const ranked=queue.map((track,index)=>({track,index,distance:current?playlistCamelotDistance(current,track):0,bpm:current?playlistMacroBpmDifference(current,track):Number(track.bpm||0)}))
       .sort((left,right)=>left.distance-right.distance||left.bpm-right.bpm||playlistCamelotBpmCompare(left.track,right.track));
     const genreChange=Boolean(current&&String(current.macro_genre||'')!==macro);
-    let choice=ranked.find(item=>playlistCamelotRecommended(current,item.track,genreChange));
+    const bpmCompatible=ranked.filter(item=>playlistMacroBpmCompatible(current,item.track));
+    let choice=bpmCompatible.find(item=>playlistCamelotRecommended(current,item.track,genreChange))||bpmCompatible[0];
     if(!choice){
       if(block.length)break;
       choice=ranked[0];fallbacks++;
@@ -295,8 +333,9 @@ function buildKrGenreBlocks(){
   let fallbacks=0;
   while(remaining>0){
     const candidates=macroOrder.filter(macro=>(groups.get(macro)?.length||0)>0);
-    const compatible=previousTrack?candidates.filter(macro=>groups.get(macro).some(track=>playlistCamelotRecommended(previousTrack,track,String(previousTrack.macro_genre||'')!==macro))):[];
-    let selectable=compatible.length?compatible:candidates;
+    const bpmCompatible=previousTrack?candidates.filter(macro=>groups.get(macro).some(track=>playlistMacroBpmCompatible(previousTrack,track))):candidates;
+    const compatible=previousTrack?bpmCompatible.filter(macro=>groups.get(macro).some(track=>playlistMacroBpmCompatible(previousTrack,track)&&playlistCamelotRecommended(previousTrack,track,String(previousTrack.macro_genre||'')!==macro))):[];
+    let selectable=compatible.length?compatible:bpmCompatible.length?bpmCompatible:candidates;
     if(selectable.length>1){
       const alternatives=selectable.filter(macro=>macro!==previousMacro);
       if(alternatives.length)selectable=alternatives;
@@ -322,7 +361,7 @@ function buildKrGenreBlocks(){
   playlistAllTracks=ordered;
   $('#playlist-camelot-debug').innerHTML='';
   applyPlaylistFilters();
-  toast(`Macro - percentuali - Camelot 1/2, cambio genere anche 6 - BPM: blocchi 1-4${fallbacks?` - ${fallbacks} salti inevitabili`:''}`);
+  toast(`Macro - blocchi 1-4 - massimo ±15 BPM - Camelot ±2${fallbacks?` - ${fallbacks} salti inevitabili`:''}`);
 }
 function camelotParts(track){const match=String(track.camelot||'').trim().toUpperCase().match(/^([1-9]|1[0-2])([AB])$/);return match?{number:Number(match[1]),letter:match[2],key:`${Number(match[1])}${match[2]}`}:null}
 function camelotTransition(left,right){const a=camelotParts(left),b=camelotParts(right);if(!a||!b)return{compatible:false,type:'key non valida'};if(a.key===b.key)return{compatible:true,type:'stessa key'};if(a.number===b.number&&a.letter!==b.letter)return{compatible:true,type:'relativa'};const next=a.number===12?1:a.number+1,previous=a.number===1?12:a.number-1;if(a.letter===b.letter&&(b.number===next||b.number===previous))return{compatible:true,type:'adiacente'};return{compatible:false,type:'fallback'}}

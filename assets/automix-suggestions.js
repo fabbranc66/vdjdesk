@@ -22,7 +22,7 @@ loadSuggestions = async function(mode = state.currentMode, tag = activeSuggestio
   activeSuggestionTag = tag;
   const modeLabels = {same:'Stessa vibe',up:'Piu energia',down:'Meno energia',genre:'Cambio genere',sing:'Canto',recover:'Recupero pista'};
   const referenceLabel = document.querySelector('#view-suggestions .suggestion-control .kicker');
-  if (referenceLabel) referenceLabel.textContent = 'BRANO DI PARTENZA - LIVE';
+  if (referenceLabel) referenceLabel.textContent = window.playlistSuggestionContext ? 'BRANO PLAYLIST - INSERISCI DOPO' : 'BRANO DI PARTENZA - LIVE';
   const currentId = Number($('#current-track-select').value || state.bootstrap?.current?.id || state.tracks[0]?.id);
   if (!currentId) return;
   suggestionFilterBar.classList.toggle('hidden', !activeSuggestionTag);
@@ -53,7 +53,7 @@ loadSuggestions = async function(mode = state.currentMode, tag = activeSuggestio
       <div class="mobile-hidden"><span class="cell-label">BPM</span><b>${track.bpm ?? '—'}</b></div>
       <div class="mobile-hidden"><span class="cell-label">KEY / SCALA</span><b>${escapeHtml(track.camelot || track.musical_key || '—')} · ${scaleMode(track)}</b></div>
       <div class="suggestion-reason mobile-hidden"><b>${track.score}% compatibile</b>${escapeHtml(track.reasons.join(' · '))}</div>
-      <div><div class="suggestion-badges">${track.badges.map(badge => `<button type="button" class="badge suggestion-tag-filter" data-tag="${escapeHtml(badge)}">${escapeHtml(badge)}</button>`).join('')}</div><div class="suggestion-actions"><button type="button" class="button ghost vdj-prelisten-title suggestion-prelisten" data-track-id="${track.id}" title="Preascolta in cuffia con VirtualDJ da 60 secondi">🎧</button><button class="button primary suggestion-automix" data-id="${track.id}">Invia ad Automix</button></div></div>
+      <div><div class="suggestion-badges">${track.badges.map(badge => `<button type="button" class="badge suggestion-tag-filter" data-tag="${escapeHtml(badge)}">${escapeHtml(badge)}</button>`).join('')}</div><div class="suggestion-actions"><button type="button" class="button ghost vdj-prelisten-title suggestion-prelisten" data-track-id="${track.id}" title="Preascolta in cuffia con VirtualDJ da 60 secondi">🎧</button>${window.playlistSuggestionContext?`<button class="button primary suggestion-playlist-insert" data-id="${track.id}">Usa in playlist</button>`:`<button class="button primary suggestion-automix" data-id="${track.id}">Invia ad Automix</button>`}</div></div>
     </article>`).join('') : '<div class="empty-state">Nessuna proposta disponibile.</div>';
 };
 
@@ -64,6 +64,25 @@ document.addEventListener('click',async event=>{
   await loadSuggestions(state.currentMode, tagButton.dataset.tag);
 });
 suggestionFilterBar.querySelector('button').addEventListener('click',()=>loadSuggestions(state.currentMode, ''));
+
+document.addEventListener('click',async event=>{
+  const button=event.target.closest('.suggestion-playlist-insert');
+  if(!button)return;
+  event.stopImmediatePropagation();
+  const context=window.playlistSuggestionContext;
+  if(!context){toast('Contesto playlist non disponibile');return}
+  button.disabled=true;
+  try{
+    const result=await post('playlist-insert-track',{file:context.file,after_index:context.afterIndex,after_path:context.afterPath,track_id:Number(button.dataset.id)});
+    window.playlistSuggestionContext=null;
+    $('#playlist-select').dataset.selected=context.file;
+    playlistSavedScroll=Number(context.scroll)||0;
+    sessionStorage.setItem(playlistScrollStorageKey,String(playlistSavedScroll));
+    playlistScrollRestorePending=true;
+    showView('playlists');
+    toast(`${result.title} inserito dopo il brano scelto`);
+  }catch(error){toast(error.message)}finally{button.disabled=false}
+});
 
 document.addEventListener('click', async event => {
   const button = event.target.closest('.suggestion-automix');
@@ -107,6 +126,7 @@ async function refreshDatabaseStatusAndSync() {
 }
 setInterval(refreshDatabaseStatusAndSync, 10000);
 window.addEventListener('vdj-live-track-change', event => {
+  if(window.playlistSuggestionContext)return;
   const liveTrack = event.detail;
   const select = $('#current-track-select');
   if (!liveTrack?.id || !select) return;

@@ -400,6 +400,25 @@ final class PlaylistService
         return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName)):$result;
     }
 
+    public function insertTrackAfter(string $relative,int $afterIndex,string $afterPath,int $trackId): array
+    {
+        if($trackId<1)throw new RuntimeException('Brano suggerito non valido.');
+        $statement=$this->pdo()->prepare('SELECT file_path,artist,title FROM tracks WHERE id=? AND file_exists=1 LIMIT 1');
+        $statement->execute([$trackId]);$track=$statement->fetch(PDO::FETCH_ASSOC);
+        if(!$track||trim((string)$track['file_path'])===''||!is_file(canonicalPath((string)$track['file_path'])))throw new RuntimeException('File fisico del brano suggerito non disponibile.');
+        $root=$this->root();$path=canonicalPath($root.'\\'.str_replace(['/','..'],['\\',''],$relative));
+        if(!str_starts_with(strtoupper($path),strtoupper($root.'\\'))||!is_file($path))throw new RuntimeException('Playlist non valida.');
+        $paths=array_map(static fn(array $item): string=>(string)$item['file_path'],$this->read($path));
+        $sourcePath=canonicalPath($afterPath);$resolvedIndex=$afterIndex;
+        if(!isset($paths[$resolvedIndex])||strcasecmp(canonicalPath($paths[$resolvedIndex]),$sourcePath)!==0){
+            $resolvedIndex=-1;foreach($paths as $index=>$itemPath){if(strcasecmp(canonicalPath($itemPath),$sourcePath)===0){$resolvedIndex=$index;break;}}
+        }
+        if($resolvedIndex<0)throw new RuntimeException('Riga origine non trovata nella playlist.');
+        array_splice($paths,$resolvedIndex+1,0,[(string)$track['file_path']]);
+        $result=$this->saveOrder($relative,$paths,false);
+        return array_merge($result,['inserted_index'=>$resolvedIndex+1,'track_id'=>$trackId,'title'=>trim((string)$track['artist'].' - '.(string)$track['title'],' -')]);
+    }
+
     private function renameByMacroComposition(string $path,array $paths,string $requestedName=''): array
     {
         $counts=[];$metadata=$this->pdo()->prepare('SELECT macro_genre FROM tracks WHERE file_path=? ORDER BY file_exists DESC LIMIT 1');

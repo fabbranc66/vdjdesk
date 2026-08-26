@@ -316,6 +316,7 @@ try {
     if ($action === 'playlist-external-folder-match' && $method === 'POST') jsonResponse((new PlaylistService())->matchExternalListToFolder((array)($data['items']??[]),(string)($data['folder']??'')));
     if ($action === 'playlist-external-apply-metadata' && $method === 'POST') jsonResponse((new PlaylistService())->applyExternalMetadata((array)($data['matches']??[])));
     if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[]),true,(string)($data['name']??'')));
+    if ($action === 'playlist-insert-track' && $method === 'POST') jsonResponse((new PlaylistService())->insertTrackAfter((string)($data['file']??''),(int)($data['after_index']??-1),(string)($data['after_path']??''),(int)($data['track_id']??0)));
     if ($action === 'playlist-replace-track' && $method === 'POST') jsonResponse((new PlaylistService())->replaceInPlaylist((string)($data['file']??''),(string)($data['old_path']??''),(string)($data['new_path']??'')));
     if ($action === 'playlist-replace-all-missing' && $method === 'POST') jsonResponse((new PlaylistService())->replaceAllMissingFromLibrary((string)($data['file']??'')));
     if ($action === 'playlist-spotmate-start' && $method === 'POST') jsonResponse((new PlaylistService())->startSpotmate((string)($data['file']??''),(int)($data['id']??0),(string)($data['old_path']??'')));
@@ -480,7 +481,12 @@ try {
         jsonResponse(['ok'=>true,'deleted'=>$statement->rowCount()]);
     }
     if ($action === 'quiz-state') jsonResponse($quiz->state((string)($_GET['token']??''),(bool)($_GET['control']??false)));
-    if ($action === 'quiz-history') jsonResponse(['items'=>$quiz->history((int)($_GET['limit']??30))]);
+    if ($action === 'quiz-groups') jsonResponse($quiz->groups());
+    if ($action === 'quiz-group-create' && $method === 'POST') jsonResponse($quiz->createGroup((string)($data['name']??''),(string)($data['event_date']??''),(string)($data['description']??'')),201);
+    if ($action === 'quiz-group-activate' && $method === 'POST') jsonResponse($quiz->activateGroup((int)($data['id']??0)));
+    if ($action === 'quiz-group-duplicate' && $method === 'POST') jsonResponse($quiz->duplicateGroup((int)($data['id']??0),(string)($data['name']??''),(string)($data['event_date']??'')),201);
+    if ($action === 'quiz-group-reorder' && $method === 'POST') jsonResponse($quiz->reorderGroup((int)($data['group_id']??0),(array)($data['ids']??[])));
+    if ($action === 'quiz-history') jsonResponse(['items'=>$quiz->history((int)($_GET['limit']??30),array_key_exists('group_id',$_GET)?(int)$_GET['group_id']:null)]);
     if ($action === 'quiz-create' && $method === 'POST') jsonResponse($quiz->create($data),201);
     if ($action === 'quiz-launch' && $method === 'POST') jsonResponse($quiz->launch((int)($data['id']??0)));
     if ($action === 'quiz-close' && $method === 'POST') jsonResponse($quiz->setStatus((int)($data['id']??0),'closed'));
@@ -762,6 +768,11 @@ function shouldProxyToHosting(string $action): bool
         'request-update',
         'request-delete',
         'quiz-state',
+        'quiz-groups',
+        'quiz-group-create',
+        'quiz-group-activate',
+        'quiz-group-duplicate',
+        'quiz-group-reorder',
         'quiz-history',
         'quiz-create',
         'quiz-launch',
@@ -876,6 +887,11 @@ function apiRegiaHostingActions(): array
         'request-update',
         'request-delete',
         'quiz-state',
+        'quiz-groups',
+        'quiz-group-create',
+        'quiz-group-activate',
+        'quiz-group-duplicate',
+        'quiz-group-reorder',
         'quiz-history',
         'quiz-create',
         'quiz-launch',
@@ -951,6 +967,7 @@ function apiStudioLocalActions(): array
         'playlist-external-folder-match',
         'playlist-external-apply-metadata',
         'playlist-save-order',
+        'playlist-insert-track',
         'playlist-replace-track',
         'playlist-replace-all-missing',
         'playlist-spotmate-start',
