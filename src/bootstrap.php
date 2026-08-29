@@ -275,6 +275,17 @@ function migrateMariaDb(PDO $pdo): void
     if(!in_array('left_at',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN left_at DATETIME NULL');
     if(!in_array('status',$participantColumns,true))$pdo->exec("ALTER TABLE quiz_participants ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'");
     if(!in_array('rejoin_requested_at',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN rejoin_requested_at DATETIME NULL');
+    if(!in_array('local_identifier',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN local_identifier CHAR(36) NULL UNIQUE AFTER public_token');
+    $pdo->exec("CREATE TABLE IF NOT EXISTS quiz_bets (
+        id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, question_id INT UNSIGNED NOT NULL,
+        participant_id INT UNSIGNED NOT NULL, mode VARCHAR(20) NOT NULL,
+        stake_points INT UNSIGNED NOT NULL DEFAULT 0, result_points INT NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'pending', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        settled_at DATETIME NULL,
+        UNIQUE KEY uq_quiz_bet(question_id,participant_id), KEY idx_quiz_bets_participant(participant_id),
+        CONSTRAINT fk_quiz_bet_question FOREIGN KEY(question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
+        CONSTRAINT fk_quiz_bet_participant FOREIGN KEY(participant_id) REFERENCES quiz_participants(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     $questionColumns=array_column($pdo->query('SHOW COLUMNS FROM quiz_questions')->fetchAll(),'Field');
     if(!in_array('group_id',$questionColumns,true))$pdo->exec('ALTER TABLE quiz_questions ADD COLUMN group_id INT UNSIGNED NULL AFTER track_id');
     if(!in_array('sort_order',$questionColumns,true))$pdo->exec('ALTER TABLE quiz_questions ADD COLUMN sort_order INT NOT NULL DEFAULT 0');

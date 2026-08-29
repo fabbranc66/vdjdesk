@@ -515,15 +515,20 @@ try {
     if ($action === 'quiz-history') jsonResponse(['items'=>$quiz->history((int)($_GET['limit']??30),array_key_exists('group_id',$_GET)?(int)$_GET['group_id']:null)]);
     if ($action === 'quiz-create' && $method === 'POST') jsonResponse($quiz->create($data),201);
     if ($action === 'quiz-launch' && $method === 'POST') jsonResponse($quiz->launch((int)($data['id']??0)));
+    if ($action === 'quiz-bet-open' && $method === 'POST') jsonResponse($quiz->openBetting((int)($data['id']??0)));
     if ($action === 'quiz-close' && $method === 'POST') jsonResponse($quiz->setStatus((int)($data['id']??0),'closed'));
     if ($action === 'quiz-reveal' && $method === 'POST') jsonResponse($quiz->setStatus((int)($data['id']??0),'revealed'));
     if ($action === 'quiz-join' && $method === 'POST') {
         if (setting('public_quiz_enabled', '1') !== '1') jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'], 403);
-        jsonResponse($quiz->join((string)($data['name']??''),(string)($data['token']??'')));
+        jsonResponse($quiz->join((string)($data['name']??''),(string)($data['token']??''),(string)($data['local_identifier']??'')));
     }
     if ($action === 'quiz-answer' && $method === 'POST') {
         if (setting('public_quiz_enabled', '1') !== '1') jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'], 403);
         jsonResponse($quiz->answer((int)($data['question_id']??0),(string)($data['token']??''),(string)($data['option']??'')));
+    }
+    if ($action === 'quiz-bet-place' && $method === 'POST') {
+        if (setting('public_quiz_enabled', '1') !== '1') jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'], 403);
+        jsonResponse($quiz->placeBet((int)($data['question_id']??0),(string)($data['token']??''),(string)($data['mode']??'')));
     }
     if ($action === 'quiz-codex-suggest' && $method === 'POST') jsonResponse((new CodexQuizSuggestionService($pdo))->suggest((int)($data['track_id']??0),(string)($data['current_question']??'')));
     if ($action === 'quiz-heartbeat' && $method === 'POST') jsonResponse($quiz->heartbeat((string)($data['token']??''),true));
@@ -810,10 +815,12 @@ function shouldProxyToHosting(string $action): bool
         'quiz-history',
         'quiz-create',
         'quiz-launch',
+        'quiz-bet-open',
         'quiz-close',
         'quiz-reveal',
         'quiz-join',
         'quiz-answer',
+        'quiz-bet-place',
         'quiz-heartbeat',
         'quiz-leave',
         'quiz-participant-action',
@@ -931,10 +938,12 @@ function apiRegiaHostingActions(): array
         'quiz-history',
         'quiz-create',
         'quiz-launch',
+        'quiz-bet-open',
         'quiz-close',
         'quiz-reveal',
         'quiz-join',
         'quiz-answer',
+        'quiz-bet-place',
         'quiz-heartbeat',
         'quiz-leave',
         'quiz-participant-action',

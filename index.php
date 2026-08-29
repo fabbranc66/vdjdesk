@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="assets/playlists.css?v=14">
   <link rel="stylesheet" href="assets/playlists-simple.css?v=5">
   <link rel="stylesheet" href="assets/playlist-integrator.css?v=7">
-  <link rel="stylesheet" href="assets/quiz.css?v=6">
+  <link rel="stylesheet" href="assets/quiz.css?v=9">
   <link rel="stylesheet" href="assets/audio-analysis.css?v=38">
 </head>
 <body>
@@ -187,7 +187,7 @@
           <article class="panel quiz-editor"><span class="kicker">REGIA QUIZ</span><h2>Prepara la prossima domanda</h2><div id="quiz-live-track" class="quiz-live-track">Brano ON AIR non disponibile</div><form id="quiz-create-form"><input type="hidden" name="track_id" id="quiz-track-id"><input type="hidden" name="group_id" id="quiz-question-group-id" value="0"><label>Domanda<input name="question" required maxlength="500" placeholder="Quale curiosità è legata a questo brano?"></label><div class="quiz-option-editor"><label><b>A</b><input name="option_a" required></label><label><b>B</b><input name="option_b" required></label><label><b>C</b><input name="option_c" required></label><label><b>D</b><input name="option_d" required></label></div><div class="quiz-editor-footer"><label>Risposta corretta<select name="correct_option"><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>Timer<select name="duration_seconds"><option>10</option><option>15</option><option selected>20</option><option>30</option><option>45</option><option>60</option></select></label><button class="button primary" type="button" id="quiz-codex-suggest">✦ Suggerisci domanda</button><button class="button accent" type="submit">Salva domanda</button></div><a id="quiz-suggestion-source" class="quiz-suggestion-source hidden" target="_blank" rel="noopener">Fonte verificata ↗</a></form></article>
           <article class="panel quiz-live-control"><div class="quiz-live-head"><div><span class="kicker">STATO LIVE</span><h2 id="quiz-control-status">In attesa</h2></div><strong id="quiz-control-timer">--</strong></div><div id="quiz-control-question" class="empty-state">Nessuna domanda preparata.</div><div class="button-row"><button type="button" id="quiz-launch" class="button primary" disabled>Lancia domanda</button><button type="button" id="quiz-close" class="button ghost" disabled>Chiudi risposte</button></div><div class="quiz-links"><a id="quiz-public-link" target="_blank">Pagina mobile ↗</a><a id="quiz-screen-link" target="_blank">Schermo esterno ↗</a></div></article>
         </div>
-        <div class="quiz-bottom-grid"><article class="panel"><div class="panel-label"><span>DOMANDE PREPARATE</span></div><div id="quiz-history" class="quiz-history empty-state">Nessuna domanda.</div></article><article class="panel"><div class="panel-label"><span>PARTECIPANTI LIVE</span><b id="quiz-participant-count">0 online</b></div><div id="quiz-participants" class="quiz-participants empty-state">Nessun partecipante.</div></article><article class="panel"><div class="panel-label"><span>CLASSIFICA LIVE</span></div><div id="quiz-leaderboard" class="quiz-leaderboard empty-state">Nessuna risposta.</div></article></div>
+        <div class="quiz-bottom-grid"><article class="panel"><div class="panel-label"><span>DOMANDE PREPARATE</span></div><div id="quiz-history" class="quiz-history empty-state">Nessuna domanda.</div></article><article class="panel"><div class="panel-label"><span>PARTECIPANTI LIVE</span><b id="quiz-participant-count">0 online</b></div><div id="quiz-participants" class="quiz-participants empty-state">Nessun partecipante.</div></article><article class="panel"><div class="panel-label"><span>CLASSIFICA DELLA SERATA</span></div><div id="quiz-leaderboard" class="quiz-leaderboard empty-state">Nessun punteggio assegnato.</div></article></div>
       </div>
     </section>
     </section>
@@ -296,5 +296,5 @@
   <script src="assets/bulk-tags.js?v=3"></script>
   <script src="assets/vdj-years.js?v=5"></script>
   <script src="assets/playlist-builder.js?v=21"></script>
-  <script src="assets/quiz-control.js?v=20"></script>
+  <script src="assets/quiz-control.js?v=24"></script>
 </body></html>

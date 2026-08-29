@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 final class QuizService
 {
+    private const FASTEST_CORRECT_BONUS = 250;
+
     public function __construct(private PDO $pdo) {}
 
     public function create(array $data): array
@@ -25,25 +27,52 @@ final class QuizService
 
     public function launch(int $id): array
     {
-        if(!$this->question($id,true))throw new RuntimeException('Domanda non trovata.');
+        $question=$this->question($id,true);if(!$question)throw new RuntimeException('Domanda non trovata.');
+        if($question['status']!=='betting')throw new RuntimeException('Apri prima la fase puntate.');
+        foreach($this->pdo->query("SELECT id FROM quiz_questions WHERE status IN ('open','revealed')")->fetchAll(PDO::FETCH_COLUMN) as $questionId)$this->finalizeQuestionScores((int)$questionId);
         $this->pdo->exec("UPDATE quiz_questions SET status='closed' WHERE status IN ('open','revealed')");
         $statement=$this->pdo->prepare("UPDATE quiz_questions SET status='open',opened_at=NOW(),closes_at=DATE_ADD(NOW(),INTERVAL duration_seconds SECOND),revealed_at=NULL WHERE id=?");$statement->execute([$id]);
         return ['ok'=>true,'question'=>$this->question($id,true)];
     }
 
+    public function openBetting(int $id): array
+    {
+        $question=$this->question($id,true);if(!$question||!in_array($question['status'],['draft','betting'],true))throw new RuntimeException('Domanda non disponibile per le puntate.');
+        $this->pdo->prepare("UPDATE quiz_questions SET status='draft' WHERE status='betting' AND id<>?")->execute([$id]);
+        $this->pdo->prepare("UPDATE quiz_questions SET status='betting' WHERE id=?")->execute([$id]);
+        return ['ok'=>true,'question'=>$this->question($id,true)];
+    }
+
+    public function placeBet(int $questionId,string $token,string $mode): array
+    {
+        if(!in_array($mode,['half','all_in'],true))throw new RuntimeException('Puntata non valida.');
+        $participant=$this->participant($token);if(!$participant||(string)($participant['status']??'')!=='active')throw new RuntimeException('Partecipante non riconosciuto.');
+        $statement=$this->pdo->prepare("SELECT id,group_id FROM quiz_questions WHERE id=? AND status='betting'");$statement->execute([$questionId]);$question=$statement->fetch();if(!$question)throw new RuntimeException('La fase puntate non è attiva.');
+        $score=$this->participantScore((int)$participant['id'],!empty($question['group_id'])?(int)$question['group_id']:null);if($score<1)throw new RuntimeException('Non hai ancora punti da puntare.');
+        $stake=$mode==='all_in'?$score:max(1,intdiv($score,2));
+        $save=$this->pdo->prepare("INSERT INTO quiz_bets(question_id,participant_id,mode,stake_points,status,result_points,settled_at) VALUES(?,?,?,?,'pending',0,NULL) ON DUPLICATE KEY UPDATE mode=VALUES(mode),stake_points=VALUES(stake_points),status='pending',result_points=0,settled_at=NULL");
+        $save->execute([$questionId,$participant['id'],$mode,$stake]);
+        return ['ok'=>true,'mode'=>$mode,'stake_points'=>$stake,'score'=>$score];
+    }
+
     public function setStatus(int $id,string $status): array
     {
         if(!in_array($status,['closed','revealed'],true))throw new RuntimeException('Stato quiz non valido.');
+        $this->finalizeQuestionScores($id);
         $sql="UPDATE quiz_questions SET status='revealed',closes_at=LEAST(COALESCE(closes_at,NOW()),NOW()),revealed_at=NOW() WHERE id=?";
         $statement=$this->pdo->prepare($sql);$statement->execute([$id]);
         if(!$statement->rowCount())throw new RuntimeException('Domanda non trovata.');
         return ['ok'=>true,'question'=>$this->question($id,true)];
     }
 
-    public function join(string $name,string $token=''): array
+    public function join(string $name,string $token='',string $localIdentifier=''): array
     {
         $name=mb_substr(trim($name),0,80);if($name==='')throw new RuntimeException('Inserisci il tuo nome o quello della squadra.');
+        $localIdentifier=preg_match('/^[a-f0-9-]{36}$/i',$localIdentifier)?strtolower($localIdentifier):'';
         $participant=$this->participant($token);
+        if($participant&&$localIdentifier!=='')$this->pdo->prepare('UPDATE quiz_participants SET local_identifier=COALESCE(local_identifier,?) WHERE id=?')->execute([$localIdentifier,$participant['id']]);
+        if(!$participant&&$localIdentifier!=='')$participant=$this->participantByLocalIdentifier($localIdentifier);
+        $this->assertDisplayNameAvailable($name,(int)($participant['id']??0));
         if($participant){
             $requiresApproval=((string)($participant['status']??'active')!=='active')||(int)($participant['is_online']??0)===0||!empty($participant['left_at']);
             if($requiresApproval){
@@ -55,7 +84,7 @@ final class QuizService
             $participant['display_name']=$name;$participant['status']='active';
             return ['ok'=>true,'participant'=>$participant];
         }
-        $token=$this->uuid();$statement=$this->pdo->prepare("INSERT INTO quiz_participants(public_token,display_name,is_online,status) VALUES(?,?,1,'active')");$statement->execute([$token,$name]);
+        $token=$this->uuid();$statement=$this->pdo->prepare("INSERT INTO quiz_participants(public_token,local_identifier,display_name,is_online,status) VALUES(?,?,?,1,'active')");$statement->execute([$token,$localIdentifier?:null,$name]);
         return ['ok'=>true,'participant'=>['id'=>(int)$this->pdo->lastInsertId(),'public_token'=>$token,'display_name'=>$name,'status'=>'active']];
     }
 
@@ -64,19 +93,20 @@ final class QuizService
         $option=strtoupper(trim($option));if(!in_array($option,['A','B','C','D'],true))throw new RuntimeException('Risposta non valida.');
         $participant=$this->participant($token);if(!$participant)throw new RuntimeException('Partecipa al quiz prima di rispondere.');
         $statement=$this->pdo->prepare("SELECT *,TIMESTAMPDIFF(MICROSECOND,opened_at,NOW()) DIV 1000 elapsed_ms FROM quiz_questions WHERE id=? AND status='open' AND NOW()<closes_at");$statement->execute([$questionId]);$question=$statement->fetch();if(!$question)throw new RuntimeException('Tempo scaduto o domanda non attiva.');
-        $elapsed=max(0,(int)$question['elapsed_ms']);$duration=(int)$question['duration_seconds']*1000;$correct=$option===$question['correct_option'];$speed=max(0,1-min(1,$elapsed/max(1,$duration)));$points=$correct?500+(int)round($speed*500):0;
-        try{$insert=$this->pdo->prepare('INSERT INTO quiz_answers(question_id,participant_id,selected_option,is_correct,response_ms,points) VALUES(?,?,?,?,?,?)');$insert->execute([$questionId,$participant['id'],$option,$correct?1:0,$elapsed,$points]);}catch(PDOException $error){if((string)$error->getCode()==='23000')throw new RuntimeException('Hai già risposto a questa domanda.');throw $error;}
+        $elapsed=max(0,(int)$question['elapsed_ms']);$correct=$option===$question['correct_option'];
+        try{$insert=$this->pdo->prepare('INSERT INTO quiz_answers(question_id,participant_id,selected_option,is_correct,response_ms,points) VALUES(?,?,?,?,?,0)');$insert->execute([$questionId,$participant['id'],$option,$correct?1:0,$elapsed]);}catch(PDOException $error){if((string)$error->getCode()==='23000')throw new RuntimeException('Hai già risposto a questa domanda.');throw $error;}
         return ['ok'=>true,'accepted'=>true];
     }
 
     public function state(string $token='',bool $control=false): array
     {
         $this->advanceState();
-        $question=$this->pdo->query("SELECT q.*,t.artist,t.title,t.genre,t.bpm,t.camelot FROM quiz_questions q LEFT JOIN tracks t ON t.id=q.track_id ORDER BY CASE WHEN q.status='open' THEN 0 WHEN q.status='revealed' THEN 1 WHEN q.opened_at IS NOT NULL THEN 2 ELSE 3 END,COALESCE(q.opened_at,q.created_at) DESC,q.id DESC LIMIT 1")->fetch()?:null;
+        $question=$this->pdo->query("SELECT q.*,t.artist,t.title,t.genre,t.bpm,t.camelot FROM quiz_questions q LEFT JOIN tracks t ON t.id=q.track_id ORDER BY CASE WHEN q.status='betting' THEN 0 WHEN q.status='open' THEN 1 WHEN q.status='revealed' THEN 2 WHEN q.opened_at IS NOT NULL THEN 3 ELSE 4 END,COALESCE(q.opened_at,q.created_at) DESC,q.id DESC LIMIT 1")->fetch()?:null;
         $participant=$this->participant($token);$answered=false;$selected='';
         if($question&&$participant){$statement=$this->pdo->prepare('SELECT selected_option FROM quiz_answers WHERE question_id=? AND participant_id=?');$statement->execute([$question['id'],$participant['id']]);$selected=(string)($statement->fetchColumn()?:'');$answered=$selected!=='';}
         $payload=$question?$this->formatQuestion($question,$control):null;
-        if($payload){$payload['answered']=$answered;$payload['selected_option']=$selected;}
+        if($payload){$payload['answered']=$answered;$payload['selected_option']=$selected;if(!$control&&$payload['status']==='betting'){$payload['question']='';$payload['options']=[];$payload['correct_option']=null;}}
+        if($participant){$groupId=$question&&!empty($question['group_id'])?(int)$question['group_id']:null;$participant['points']=$this->participantScore((int)$participant['id'],$groupId);if($question){$bet=$this->participantBet((int)$question['id'],(int)$participant['id']);if($payload)$payload['bet']=$bet;}}
         if($participant && (string)($participant['status']??'active')!=='active')$payload=null;
         return ['question'=>$payload,'participant'=>$participant?:null,'participants'=>$control?$this->participants($question?(int)$question['id']:0):[],'leaderboard'=>$this->leaderboard($question&&!empty($question['group_id'])?(int)$question['group_id']:null),'server_time_ms'=>(int)round(microtime(true)*1000)];
     }
@@ -149,6 +179,7 @@ final class QuizService
             $this->pdo->exec("UPDATE quiz_groups SET status='planned' WHERE status='active'");
             $this->pdo->prepare("UPDATE quiz_groups SET status='active' WHERE id=?")->execute([$id]);
             $this->pdo->prepare('DELETE a FROM quiz_answers a INNER JOIN quiz_questions q ON q.id=a.question_id WHERE q.group_id=?')->execute([$id]);
+            $this->pdo->prepare('DELETE b FROM quiz_bets b INNER JOIN quiz_questions q ON q.id=b.question_id WHERE q.group_id=?')->execute([$id]);
             $reset=$this->pdo->prepare("UPDATE quiz_questions SET status='draft',opened_at=NULL,closes_at=NULL,revealed_at=NULL WHERE group_id=?");$reset->execute([$id]);
             $this->pdo->commit();
         }
@@ -187,11 +218,28 @@ final class QuizService
     }
 
     private function question(int $id,bool $control): ?array{$statement=$this->pdo->prepare('SELECT q.*,t.artist,t.title,t.genre,t.bpm,t.camelot FROM quiz_questions q LEFT JOIN tracks t ON t.id=q.track_id WHERE q.id=?');$statement->execute([$id]);$row=$statement->fetch();return $row?$this->formatQuestion($row,$control):null;}
-    private function formatQuestion(array $row,bool $control): array{$status=(string)$row['status'];$showCorrect=$control||$status==='revealed';$closesAtMs=!empty($row['closes_at'])?strtotime((string)$row['closes_at'])*1000:null;$revealedUntilMs=!empty($row['revealed_at'])?(strtotime((string)$row['revealed_at'])+10)*1000:null;$targetMs=$status==='revealed'?$revealedUntilMs:$closesAtMs;$remaining=$targetMs?max(0,(int)ceil(($targetMs-(microtime(true)*1000))/1000)):0;return ['id'=>(int)$row['id'],'track_id'=>$row['track_id']?(int)$row['track_id']:null,'group_id'=>!empty($row['group_id'])?(int)$row['group_id']:null,'sort_order'=>(int)($row['sort_order']??0),'artist'=>(string)($row['artist']??''),'title'=>(string)($row['title']??''),'genre'=>(string)($row['genre']??''),'question'=>(string)$row['question_text'],'options'=>['A'=>$row['option_a'],'B'=>$row['option_b'],'C'=>$row['option_c'],'D'=>$row['option_d']],'correct_option'=>$showCorrect?(string)$row['correct_option']:null,'duration_seconds'=>(int)$row['duration_seconds'],'remaining_seconds'=>$remaining,'closes_at_ms'=>$closesAtMs,'revealed_until_ms'=>$revealedUntilMs,'status'=>$status,'opened_at'=>$row['opened_at'],'closes_at'=>$row['closes_at'],'answers_count'=>$this->answerCount((int)$row['id'])];}
-    private function advanceState(): void{$this->pdo->exec("UPDATE quiz_questions SET status='revealed',revealed_at=NOW() WHERE status='open' AND NOW()>=closes_at");$this->pdo->exec("UPDATE quiz_questions SET status='closed' WHERE status='revealed' AND revealed_at IS NOT NULL AND NOW()>=DATE_ADD(revealed_at,INTERVAL 10 SECOND)");}
+    private function formatQuestion(array $row,bool $control): array{$status=(string)$row['status'];$showCorrect=$control||$status==='revealed';$closesAtMs=!empty($row['closes_at'])?strtotime((string)$row['closes_at'])*1000:null;$revealedUntilMs=!empty($row['revealed_at'])?(strtotime((string)$row['revealed_at'])+10)*1000:null;$targetMs=$status==='revealed'?$revealedUntilMs:$closesAtMs;$remaining=$targetMs?max(0,(int)ceil(($targetMs-(microtime(true)*1000))/1000)):0;return ['id'=>(int)$row['id'],'track_id'=>$row['track_id']?(int)$row['track_id']:null,'group_id'=>!empty($row['group_id'])?(int)$row['group_id']:null,'sort_order'=>(int)($row['sort_order']??0),'artist'=>(string)($row['artist']??''),'title'=>(string)($row['title']??''),'genre'=>(string)($row['genre']??''),'question'=>(string)$row['question_text'],'options'=>['A'=>$row['option_a'],'B'=>$row['option_b'],'C'=>$row['option_c'],'D'=>$row['option_d']],'correct_option'=>$showCorrect?(string)$row['correct_option']:null,'duration_seconds'=>(int)$row['duration_seconds'],'remaining_seconds'=>$remaining,'closes_at_ms'=>$closesAtMs,'revealed_until_ms'=>$revealedUntilMs,'status'=>$status,'opened_at'=>$row['opened_at'],'closes_at'=>$row['closes_at'],'answers_count'=>$this->answerCount((int)$row['id']),'bets_count'=>$this->betCount((int)$row['id'])];}
+    private function advanceState(): void{$expired=$this->pdo->query("SELECT id FROM quiz_questions WHERE status='open' AND NOW()>=closes_at")->fetchAll(PDO::FETCH_COLUMN);foreach($expired as $questionId)$this->finalizeQuestionScores((int)$questionId);$this->pdo->exec("UPDATE quiz_questions SET status='revealed',revealed_at=NOW() WHERE status='open' AND NOW()>=closes_at");$this->pdo->exec("UPDATE quiz_questions SET status='closed' WHERE status='revealed' AND revealed_at IS NOT NULL AND NOW()>=DATE_ADD(revealed_at,INTERVAL 10 SECOND)");}
+    private function finalizeQuestionScores(int $questionId): void{$statement=$this->pdo->prepare('UPDATE quiz_answers a INNER JOIN quiz_questions q ON q.id=a.question_id SET a.points=IF(a.is_correct=1,500+ROUND(GREATEST(0,1-LEAST(1,a.response_ms/GREATEST(1,q.duration_seconds*1000)))*500),0) WHERE q.id=?');$statement->execute([$questionId]);$fastest=$this->pdo->prepare('SELECT id FROM quiz_answers WHERE question_id=? AND is_correct=1 ORDER BY response_ms,id LIMIT 1');$fastest->execute([$questionId]);$fastestId=(int)($fastest->fetchColumn()?:0);if($fastestId>0)$this->pdo->prepare('UPDATE quiz_answers SET points=points+? WHERE id=?')->execute([self::FASTEST_CORRECT_BONUS,$fastestId]);$settle=$this->pdo->prepare("UPDATE quiz_bets b LEFT JOIN quiz_answers a ON a.question_id=b.question_id AND a.participant_id=b.participant_id SET b.result_points=IF(COALESCE(a.is_correct,0)=1,b.stake_points,-b.stake_points),b.status='settled',b.settled_at=NOW() WHERE b.question_id=?");$settle->execute([$questionId]);}
     private function participant(string $token): ?array{if(!preg_match('/^[a-f0-9-]{36}$/i',$token))return null;$statement=$this->pdo->prepare('SELECT id,public_token,display_name,is_online,left_at,status,rejoin_requested_at FROM quiz_participants WHERE public_token=?');$statement->execute([$token]);$row=$statement->fetch();return $row?:null;}
+    private function participantByLocalIdentifier(string $localIdentifier): ?array{$statement=$this->pdo->prepare('SELECT id,public_token,display_name,is_online,left_at,status,rejoin_requested_at FROM quiz_participants WHERE local_identifier=? LIMIT 1');$statement->execute([$localIdentifier]);$row=$statement->fetch();return $row?:null;}
+    private function assertDisplayNameAvailable(string $name,int $participantId=0): void
+    {
+        $check=$this->pdo->prepare("SELECT COUNT(*) FROM quiz_participants WHERE LOWER(TRIM(display_name))=LOWER(?) AND status<>'removed' AND last_seen_at>=DATE_SUB(NOW(),INTERVAL 12 HOUR) AND id<>?");
+        $check->execute([$name,$participantId]);
+        if(!(int)$check->fetchColumn())return;
+        for($suffix=2;$suffix<100;$suffix++){
+            $alias=mb_substr($name,0,77-mb_strlen((string)$suffix)).' '.$suffix;
+            $check->execute([$alias,$participantId]);
+            if(!(int)$check->fetchColumn())throw new RuntimeException("Nome già utilizzato. Prova con: $alias");
+        }
+        throw new RuntimeException('Nome già utilizzato. Scegli un alias diverso.');
+    }
     private function answerCount(int $questionId): int{$statement=$this->pdo->prepare('SELECT COUNT(*) FROM quiz_answers WHERE question_id=?');$statement->execute([$questionId]);return (int)$statement->fetchColumn();}
-    private function leaderboard(?int $groupId): array{$where=$groupId?'q.group_id=?':'q.group_id IS NULL';$statement=$this->pdo->prepare("SELECT p.id,p.display_name,COALESCE(SUM(a.points),0) points,SUM(a.is_correct) correct_answers,COUNT(a.id) answers FROM quiz_participants p INNER JOIN quiz_answers a ON a.participant_id=p.id INNER JOIN quiz_questions q ON q.id=a.question_id WHERE p.status<>'removed' AND $where GROUP BY p.id,p.display_name ORDER BY points DESC,correct_answers DESC,p.display_name LIMIT 20");$statement->execute($groupId?[$groupId]:[]);return $statement->fetchAll();}
+    private function betCount(int $questionId): int{$statement=$this->pdo->prepare('SELECT COUNT(*) FROM quiz_bets WHERE question_id=?');$statement->execute([$questionId]);return (int)$statement->fetchColumn();}
+    private function participantBet(int $questionId,int $participantId): ?array{$statement=$this->pdo->prepare('SELECT mode,stake_points,status,result_points FROM quiz_bets WHERE question_id=? AND participant_id=?');$statement->execute([$questionId,$participantId]);$row=$statement->fetch();return $row?:null;}
+    private function participantScore(int $participantId,?int $groupId): int{$where=$groupId?'q.group_id=?':'q.group_id IS NULL';$answer=$this->pdo->prepare("SELECT COALESCE(SUM(a.points),0) FROM quiz_answers a INNER JOIN quiz_questions q ON q.id=a.question_id WHERE a.participant_id=? AND q.status<>'open' AND $where");$answer->execute($groupId?[$participantId,$groupId]:[$participantId]);$bets=$this->pdo->prepare("SELECT COALESCE(SUM(b.result_points),0) FROM quiz_bets b INNER JOIN quiz_questions q ON q.id=b.question_id WHERE b.participant_id=? AND b.status='settled' AND $where");$bets->execute($groupId?[$participantId,$groupId]:[$participantId]);return max(0,(int)$answer->fetchColumn()+(int)$bets->fetchColumn());}
+    private function leaderboard(?int $groupId): array{$where=$groupId?'q.group_id=?':'q.group_id IS NULL';$sql="SELECT p.id,p.display_name,GREATEST(0,SUM(s.points)) points,SUM(s.correct_answers) correct_answers,SUM(s.answers) answers FROM quiz_participants p INNER JOIN (SELECT a.participant_id,SUM(a.points) points,SUM(a.is_correct) correct_answers,COUNT(a.id) answers FROM quiz_answers a INNER JOIN quiz_questions q ON q.id=a.question_id WHERE q.status<>'open' AND $where GROUP BY a.participant_id UNION ALL SELECT b.participant_id,SUM(b.result_points) points,0 correct_answers,0 answers FROM quiz_bets b INNER JOIN quiz_questions q ON q.id=b.question_id WHERE b.status='settled' AND $where GROUP BY b.participant_id) s ON s.participant_id=p.id WHERE p.status<>'removed' GROUP BY p.id,p.display_name ORDER BY points DESC,correct_answers DESC,p.display_name LIMIT 20";$statement=$this->pdo->prepare($sql);$params=$groupId?[$groupId,$groupId]:[];$statement->execute($params);return $statement->fetchAll();}
     private function participants(int $questionId): array{$statement=$this->pdo->prepare("SELECT p.id,p.display_name,p.status,p.rejoin_requested_at,IF(p.status='active' AND p.is_online=1 AND p.last_seen_at>=DATE_SUB(NOW(),INTERVAL 8 SECOND),1,0) online,p.last_seen_at,p.left_at,a.selected_option,COALESCE(a.is_correct,0) is_correct,COALESCE(a.points,0) points FROM quiz_participants p LEFT JOIN quiz_answers a ON a.participant_id=p.id AND a.question_id=? WHERE p.status<>'removed' ORDER BY (p.status='pending') DESC,online DESC,(a.id IS NOT NULL) DESC,p.display_name");$statement->execute([$questionId]);return $statement->fetchAll();}
     private function uuid(): string{$data=random_bytes(16);$data[6]=chr((ord($data[6])&0x0f)|0x40);$data[8]=chr((ord($data[8])&0x3f)|0x80);return vsprintf('%s%s-%s-%s-%s-%s%s%s',str_split(bin2hex($data),4));}
 }

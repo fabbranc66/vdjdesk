@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS requests (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS quiz_participants (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, public_token CHAR(36) NOT NULL UNIQUE,
+    local_identifier CHAR(36) NULL UNIQUE,
     display_name VARCHAR(80) NOT NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, is_online TINYINT NOT NULL DEFAULT 1,
     left_at DATETIME NULL, status VARCHAR(20) NOT NULL DEFAULT 'active', rejoin_requested_at DATETIME NULL
@@ -72,6 +73,16 @@ CREATE TABLE IF NOT EXISTS quiz_answers (
     UNIQUE KEY uq_quiz_answer(question_id,participant_id), KEY idx_quiz_answers_participant(participant_id),
     CONSTRAINT fk_quiz_answer_question FOREIGN KEY(question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
     CONSTRAINT fk_quiz_answer_participant FOREIGN KEY(participant_id) REFERENCES quiz_participants(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS quiz_bets (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, question_id INT UNSIGNED NOT NULL,
+    participant_id INT UNSIGNED NOT NULL, mode VARCHAR(20) NOT NULL,
+    stake_points INT UNSIGNED NOT NULL DEFAULT 0, result_points INT NOT NULL DEFAULT 0,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    settled_at DATETIME NULL,
+    UNIQUE KEY uq_quiz_bet(question_id,participant_id), KEY idx_quiz_bets_participant(participant_id),
+    CONSTRAINT fk_quiz_bet_question FOREIGN KEY(question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    CONSTRAINT fk_quiz_bet_participant FOREIGN KEY(participant_id) REFERENCES quiz_participants(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS queue (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, track_id BIGINT UNSIGNED NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'dj',

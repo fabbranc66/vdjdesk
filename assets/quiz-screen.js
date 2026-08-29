@@ -20,7 +20,7 @@ function renderScreen(data){
   }else{
     target.innerHTML=`<div class="screen-question-head"><span>${question.status==='open'?'RISPONDI ORA':'SOLUZIONE'}</span><small>${question.answers_count} risposte</small></div><h1>${escapeScreen(question.question)}</h1><div class="screen-options">${Object.entries(question.options).map(([letter,text])=>`<div class="${question.status==='revealed'&&question.correct_option===letter?'correct':''}"><b>${letter}</b><span>${escapeScreen(text)}</span></div>`).join('')}</div>`;
   }
-  document.querySelector('#screen-ranking').innerHTML=data.leaderboard.length?data.leaderboard.slice(0,10).map((item,index)=>`<div><b>${index+1}</b><strong>${escapeScreen(item.display_name)}</strong><span>${Number(item.points).toLocaleString('it-IT')}</span></div>`).join(''):'<p>La classifica apparirà dopo le prime risposte.</p>';
+  document.querySelector('#screen-ranking').innerHTML=data.leaderboard.length?data.leaderboard.slice(0,10).map((item,index)=>`<div class="rank-${index+1}"><b>${index+1}</b><strong>${escapeScreen(item.display_name)}</strong><span>${Number(item.points).toLocaleString('it-IT')} punti</span></div>`).join(''):'<p>La classifica apparirà al termine della prima domanda.</p>';
 }
 async function refreshScreen(){try{const response=await fetch('api.php?action=quiz-state',{cache:'no-store'});renderScreen(await response.json())}catch(error){}}
 refreshScreen();

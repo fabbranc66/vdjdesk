@@ -1,5 +1,8 @@
 const quizTokenKey='kr_quiz_token';
+const quizLocalIdentifierKey='kr_quiz_local_identifier';
 let quizToken=localStorage.getItem(quizTokenKey)||'';
+let quizLocalIdentifier=localStorage.getItem(quizLocalIdentifierKey)||'';
+if(!/^[a-f0-9-]{36}$/i.test(quizLocalIdentifier)){quizLocalIdentifier=crypto.randomUUID();localStorage.setItem(quizLocalIdentifierKey,quizLocalIdentifier)}
 let quizPlayerState=null;
 let quizPublicClockOffset=0;
 let quizLastOpenQuestionId=0;
@@ -25,7 +28,7 @@ document.addEventListener('click',event=>{
 
 $('#quiz-join-form').addEventListener('submit',async event=>{
   event.preventDefault();
-  const response=await fetch('api.php?action=quiz-join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#quiz-player-name').value.trim(),token:quizToken})});
+  const response=await fetch('api.php?action=quiz-join',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:$('#quiz-player-name').value.trim(),token:quizToken,local_identifier:quizLocalIdentifier})});
   const data=await response.json();
   if(!response.ok){alert(data.error||'Accesso non riuscito');return}
   quizToken=data.participant.public_token;
@@ -33,7 +36,7 @@ $('#quiz-join-form').addEventListener('submit',async event=>{
   refreshPublicQuiz();
 });
 
-function quizRanking(items){return items.slice(0,5).map((item,index)=>`<div><b>${index+1}</b><strong>${escapeHtml(item.display_name)}</strong><span>${Number(item.points).toLocaleString('it-IT')} pt</span></div>`).join('')}
+function quizRanking(items){return items.slice(0,5).map((item,index)=>`<div class="quiz-public-ranking-row rank-${index+1}"><b>${index+1}</b><strong>${escapeHtml(item.display_name)}</strong><span>${Number(item.points).toLocaleString('it-IT')} punti</span></div>`).join('')}
 
 function renderPublicQuiz(data){
   quizPublicClockOffset=Number(data.server_time_ms||Date.now())-Date.now();
@@ -42,6 +45,7 @@ function renderPublicQuiz(data){
   if(!participant){$('#quiz-join').classList.remove('hidden');$('#quiz-player').classList.add('hidden');return}
   $('#quiz-join').classList.add('hidden');
   $('#quiz-player').classList.remove('hidden');
+  $('#quiz-player-content').classList.remove('quiz-waiting','quiz-pending');
   $('#quiz-player-name-label').textContent=participant.display_name;
   const status=participant.status||'active';
   if(status==='pending'){
@@ -57,7 +61,7 @@ function renderPublicQuiz(data){
     return;
   }
   const question=data.question;
-  if(question?.status==='open'&&Number(question.id)!==quizLastOpenQuestionId){
+  if(['betting','open'].includes(question?.status)&&Number(question.id)!==quizLastOpenQuestionId){
     quizLastOpenQuestionId=Number(question.id);
     activatePublicMode('quiz');
   }
@@ -67,6 +71,10 @@ function renderPublicQuiz(data){
   $('#quiz-player-timer').textContent=seconds===null?'--':seconds;
   if(!question){
     $('#quiz-player-content').innerHTML='<div class="quiz-waiting">In attesa della prima domanda…</div>';
+  }else if(question.status==='betting'){
+    const points=Number(participant.points||0),bet=question.bet||null,half=Math.max(1,Math.floor(points/2));
+    $('#quiz-player-timer').textContent='--';
+    $('#quiz-player-content').innerHTML=`<small>PUNTATA SULLA PROSSIMA DOMANDA</small><h2>Quanto vuoi rischiare?</h2><p class="quiz-bet-score">Punteggio attuale: <b>${points.toLocaleString('it-IT')}</b></p><div class="quiz-bet-grid"><button type="button" data-quiz-bet="half" class="quiz-bet ${bet?.mode==='half'?'selected':''}" ${points<1?'disabled':''}><b>METÀ</b><span>${half.toLocaleString('it-IT')} punti</span></button><button type="button" data-quiz-bet="all_in" class="quiz-bet all-in ${bet?.mode==='all_in'?'selected':''}" ${points<1?'disabled':''}><b>ALL-IN</b><span>${points.toLocaleString('it-IT')} punti</span></button></div><p>${bet?`Puntata registrata: ${Number(bet.stake_points).toLocaleString('it-IT')} punti`:(points<1?'Servono punti per partecipare alla puntata.':'Puoi cambiare scelta finché la domanda non parte.')}</p>`;
   }else if(question.status==='draft'){
     $('#quiz-player-content').innerHTML='<div class="quiz-waiting">La prossima domanda è quasi pronta…</div>';
   }else if(question.status==='closed'){
@@ -76,10 +84,16 @@ function renderPublicQuiz(data){
   }else{
     $('#quiz-player-content').innerHTML=`<small>${escapeHtml([question.artist,question.title].filter(Boolean).join(' — '))}</small><h2>${escapeHtml(question.question)}</h2><div class="quiz-answer-grid">${Object.entries(question.options).map(([letter,text])=>`<button type="button" data-quiz-answer="${letter}" class="quiz-answer ${question.selected_option===letter?'selected':''} ${question.status==='revealed'&&question.correct_option===letter?'correct':''}" ${question.answered||question.status!=='open'?'disabled':''}><b>${letter}</b><span>${escapeHtml(text)}</span></button>`).join('')}</div><p>${question.answered?'Risposta registrata. Attendi la soluzione.':question.status==='open'?'Scegli una risposta':'Risposte chiuse.'}</p>`;
   }
-  $('#quiz-player-ranking').innerHTML=!rankingInContent&&data.leaderboard.length?`<h3>Classifica</h3>${quizRanking(data.leaderboard)}`:'';
+  $('#quiz-player-ranking').innerHTML=!rankingInContent&&data.leaderboard.length?`<h3>Classifica della serata</h3>${quizRanking(data.leaderboard)}`:'';
 }
 
 $('#quiz-player-content').addEventListener('click',async event=>{
+  const betButton=event.target.closest('[data-quiz-bet]');
+  if(betButton&&quizPlayerState?.question?.status==='betting'){
+    document.querySelectorAll('[data-quiz-bet]').forEach(item=>item.disabled=true);
+    const response=await fetch('api.php?action=quiz-bet-place',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question_id:quizPlayerState.question.id,token:quizToken,mode:betButton.dataset.quizBet})});
+    const data=await response.json();if(!response.ok)alert(data.error||'Puntata non accettata');refreshPublicQuiz();return;
+  }
   const button=event.target.closest('[data-quiz-answer]');
   if(!button||!quizPlayerState?.question)return;
   document.querySelectorAll('[data-quiz-answer]').forEach(item=>item.disabled=true);
