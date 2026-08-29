@@ -6,18 +6,21 @@ if(!/^[a-f0-9-]{36}$/i.test(quizLocalIdentifier)){quizLocalIdentifier=crypto.ran
 let quizPlayerState=null;
 let quizPublicClockOffset=0;
 let quizLastOpenQuestionId=0;
-let publicModules={requests_enabled:false,quiz_enabled:false};
+let publicModules={requests_enabled:false,quiz_enabled:false,active_game:'none'};
 
 function activatePublicMode(mode){
+  const chillEnabled=publicModules.active_game==='chill_reel';
   if(mode==='requests'&&!publicModules.requests_enabled)mode=publicModules.quiz_enabled?'quiz':'disabled';
   if(mode==='quiz'&&!publicModules.quiz_enabled)mode=publicModules.requests_enabled?'requests':'disabled';
+  if(mode==='chill-reel'&&!chillEnabled)mode=publicModules.requests_enabled?'requests':publicModules.quiz_enabled?'quiz':'disabled';
   document.querySelectorAll('[data-public-mode]').forEach(item=>item.classList.toggle('active',item.dataset.publicMode===mode));
   $('#public-requests').classList.toggle('hidden',mode!=='requests');
   $('#public-quiz').classList.toggle('hidden',mode!=='quiz');
+  $('#public-chill-reel').classList.toggle('hidden',mode!=='chill-reel');
   $('#public-disabled').classList.toggle('hidden',mode!=='disabled');
 }
 
-async function loadPublicModules(){try{const response=await fetch('api.php?action=public-modules',{cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data.error||'Configurazione non disponibile');publicModules={requests_enabled:!!data.requests_enabled,quiz_enabled:!!data.quiz_enabled};document.querySelector('[data-public-mode="requests"]').classList.toggle('hidden',!publicModules.requests_enabled);document.querySelector('[data-public-mode="quiz"]').classList.toggle('hidden',!publicModules.quiz_enabled);activatePublicMode(document.querySelector('[data-public-mode].active')?.dataset.publicMode||'requests')}catch(error){}}
+async function loadPublicModules(){try{const [modulesResponse,gameResponse]=await Promise.all([fetch('api.php?action=public-modules',{cache:'no-store'}),fetch('api.php?action=game-mode-state',{cache:'no-store'})]);const data=await modulesResponse.json();const gameData=gameResponse.ok?await gameResponse.json():{};if(!modulesResponse.ok)throw new Error(data.error||'Configurazione non disponibile');publicModules={requests_enabled:!!data.requests_enabled,quiz_enabled:!!data.quiz_enabled,active_game:gameData.active_game||data.active_game||'none'};document.querySelector('[data-public-mode="requests"]').classList.toggle('hidden',!publicModules.requests_enabled);document.querySelector('[data-public-mode="quiz"]').classList.toggle('hidden',!publicModules.quiz_enabled||publicModules.active_game==='chill_reel');document.querySelector('[data-public-mode="chill-reel"]').classList.toggle('hidden',publicModules.active_game!=='chill_reel');activatePublicMode(publicModules.active_game==='chill_reel'?'chill-reel':document.querySelector('[data-public-mode].active')?.dataset.publicMode||'requests')}catch(error){}}
 
 document.addEventListener('click',event=>{
   const tab=event.target.closest('[data-public-mode]');

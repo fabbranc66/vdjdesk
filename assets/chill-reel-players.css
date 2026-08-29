@@ -1,0 +1,51 @@
+.chill-reel-table {
+  grid-template-columns: 28px minmax(140px, 1fr) auto minmax(260px, auto);
+}
+
+.chill-reel-table.pending {
+  border-color: #d4a72c;
+  background: rgba(212, 167, 44, .09);
+}
+
+.chill-reel-table span strong,
+.chill-reel-table span small {
+  display: block;
+}
+
+.chill-reel-table span small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.chill-reel-table span small i {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #5f6976;
+}
+
+.chill-reel-table span small i.online {
+  background: var(--reel);
+  box-shadow: 0 0 8px var(--reel);
+}
+
+.chill-reel-player-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+@media (max-width: 900px) {
+  .chill-reel-table {
+    grid-template-columns: 28px 1fr auto;
+  }
+
+  .chill-reel-player-actions {
+    grid-column: 2 / -1;
+    justify-content: flex-start;
+  }
+}

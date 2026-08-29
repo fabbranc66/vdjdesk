@@ -13,6 +13,7 @@ require __DIR__ . '/src/AudioReplacementService.php';
 require __DIR__ . '/src/TrackDeletionService.php';
 require __DIR__ . '/src/PlaylistService.php';
 require __DIR__ . '/src/QuizService.php';
+require __DIR__ . '/src/ChillReelService.php';
 require __DIR__ . '/src/CodexQuizSuggestionService.php';
 require __DIR__ . '/src/LibraryStandardService.php';
 require __DIR__ . '/src/RequestEstimateService.php';
@@ -28,6 +29,7 @@ try {
     $library = new LibraryService($pdo);
     $virtualDjHistory = new VirtualDjHistoryService($pdo);
     $virtualDjControl = new VirtualDjControlService($pdo);
+    $chillReel = new ChillReelService($pdo);
     $quiz = new QuizService($pdo);
     $requestEstimate = new RequestEstimateService($pdo);
     $action = (string) ($_GET['action'] ?? 'bootstrap');
@@ -363,10 +365,27 @@ try {
         remoteApiPassthrough($action, $method, $data);
     }
     if ($action === 'public-modules') {
+        $activeGame=(string)setting('active_quiz_game','none');
+        if(!in_array($activeGame,['none','quiz_live','chill_reel'],true))$activeGame='none';
         jsonResponse([
             'requests_enabled' => setting('public_requests_enabled', '1') === '1',
             'quiz_enabled' => setting('public_quiz_enabled', '1') === '1',
+            'active_game' => $activeGame,
         ]);
+    }
+    if ($action === 'game-mode-state') {
+        $mode=(string)setting('active_quiz_game','none');
+        if(!in_array($mode,['none','quiz_live','chill_reel'],true))$mode='none';
+        jsonResponse(['active_game'=>$mode]);
+    }
+    if ($action === 'game-mode-update' && $method === 'POST') {
+        $mode=(string)($data['active_game']??'none');
+        if(!in_array($mode,['none','quiz_live','chill_reel'],true))jsonResponse(['error'=>'Gioco non valido.'],422);
+        $statement=$pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
+        $statement->execute(['active_quiz_game',$mode]);
+        $statement->execute(['public_quiz_enabled',$mode==='quiz_live'?'1':'0']);
+        if($mode!=='chill_reel')$pdo->exec("UPDATE chill_reel_games SET status='draft' WHERE status IN ('booking','active')");
+        jsonResponse(['ok'=>true,'active_game'=>$mode]);
     }
     if ($action === 'public-modules-update' && $method === 'POST') {
         if (!appUsesLocalFiles()) {
@@ -374,18 +393,47 @@ try {
             $receivedToken = (string)($data['control_token'] ?? '');
             if ($expectedToken === '' || !hash_equals($expectedToken, $receivedToken)) jsonResponse(['error'=>'Controllo Regia non autorizzato.'], 403);
         }
+        $currentGame=(string)setting('active_quiz_game','none');
+        if(!in_array($currentGame,['none','quiz_live','chill_reel'],true))$currentGame='none';
+        $requestedGame=array_key_exists('active_game',$data)?(string)$data['active_game']:(!empty($data['quiz_enabled'])?'quiz_live':($currentGame==='quiz_live'?'none':$currentGame));
+        if(!in_array($requestedGame,['none','quiz_live','chill_reel'],true))jsonResponse(['error'=>'Gioco pubblico non valido.'],422);
         $values = [
             'public_requests_enabled' => !empty($data['requests_enabled']) ? '1' : '0',
-            'public_quiz_enabled' => !empty($data['quiz_enabled']) ? '1' : '0',
+            'public_quiz_enabled' => $requestedGame==='quiz_live' ? '1' : '0',
         ];
         $statement = $pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
         foreach ($values as $key => $value) $statement->execute([$key, $value]);
+        $activeGame=$requestedGame;
+        $statement->execute(['active_quiz_game',$activeGame]);
         jsonResponse([
             'ok' => true,
             'requests_enabled' => $values['public_requests_enabled'] === '1',
             'quiz_enabled' => $values['public_quiz_enabled'] === '1',
+            'active_game' => $activeGame,
         ]);
     }
+    if ($action === 'chill-reel-state') jsonResponse($chillReel->state(array_key_exists('game_id',$_GET)?(int)$_GET['game_id']:null));
+    if ($action === 'chill-reel-create' && $method === 'POST') jsonResponse($chillReel->create($data),201);
+    if ($action === 'chill-reel-update' && $method === 'POST') jsonResponse($chillReel->update((int)($data['game_id']??0),$data));
+    if ($action === 'chill-reel-activate' && $method === 'POST') jsonResponse($chillReel->activate((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-deactivate' && $method === 'POST') jsonResponse($chillReel->deactivate((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-starter' && $method === 'POST') jsonResponse($chillReel->setStarter((int)($data['game_id']??0),(int)($data['table_id']??0)));
+    if ($action === 'chill-reel-next-turn' && $method === 'POST') jsonResponse($chillReel->nextTurn((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-spin-start' && $method === 'POST') jsonResponse($chillReel->startWheel((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-spin' && $method === 'POST') jsonResponse($chillReel->spinWheel((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-spin-finish' && $method === 'POST') jsonResponse($chillReel->finishWheel((int)($data['game_id']??0)));
+    if ($action === 'chill-reel-player-join' && $method === 'POST') jsonResponse($chillReel->join((string)($data['name']??''),(string)($data['token']??''),(string)($data['local_identifier']??'')));
+    if ($action === 'chill-reel-player-state') jsonResponse($chillReel->publicState((string)($_GET['token']??'')));
+    if ($action === 'chill-reel-player-heartbeat' && $method === 'POST') jsonResponse($chillReel->heartbeat((string)($data['token']??'')));
+    if ($action === 'chill-reel-player-leave' && $method === 'POST') jsonResponse($chillReel->heartbeat((string)($data['token']??''),false));
+    if ($action === 'chill-reel-player-action' && $method === 'POST') jsonResponse($chillReel->playerAction((int)($data['id']??0),(string)($data['action']??'')));
+    if ($action === 'chill-reel-player-spin-start' && $method === 'POST') jsonResponse($chillReel->startPlayerWheel((int)($data['game_id']??0),(string)($data['token']??'')));
+    if ($action === 'chill-reel-player-spin' && $method === 'POST') jsonResponse($chillReel->spinPlayerWheel((int)($data['game_id']??0),(string)($data['token']??'')));
+    if ($action === 'chill-reel-player-spin-finish' && $method === 'POST') jsonResponse($chillReel->finishPlayerWheel((int)($data['game_id']??0),(string)($data['token']??'')));
+    if ($action === 'chill-reel-player-letter' && $method === 'POST') jsonResponse($chillReel->chooseLetter((int)($data['game_id']??0),(string)($data['token']??''),(string)($data['letter']??'')));
+    if ($action === 'chill-reel-player-solve' && $method === 'POST') jsonResponse($chillReel->solveFromPlayer((int)($data['game_id']??0),(string)($data['token']??''),(string)($data['answer']??'')));
+    if ($action === 'chill-reel-reveal-letter' && $method === 'POST') jsonResponse($chillReel->revealLetter((int)($data['game_id']??0),(string)($data['letter']??'')));
+    if ($action === 'chill-reel-next-puzzle' && $method === 'POST') jsonResponse($chillReel->nextPuzzle((int)($data['game_id']??0),(int)($data['winner_table_id']??0)));
     if ($action === 'requests' && $method === 'GET') {
         $query = trim((string) ($_GET['q'] ?? ''));
         $requestEstimate->recalculate();
@@ -951,6 +999,8 @@ function apiRegiaHostingActions(): array
         'requests',
         'public-modules',
         'public-modules-update',
+        'game-mode-state',
+        'game-mode-update',
         'public-search',
         'request-create',
         'request-status',
@@ -978,6 +1028,28 @@ function apiRegiaHostingActions(): array
         'quiz-leave',
         'quiz-participant-action',
         'quiz-prefill',
+        'chill-reel-state',
+        'chill-reel-create',
+        'chill-reel-update',
+        'chill-reel-activate',
+        'chill-reel-deactivate',
+        'chill-reel-starter',
+        'chill-reel-next-turn',
+        'chill-reel-spin-start',
+        'chill-reel-spin',
+        'chill-reel-spin-finish',
+        'chill-reel-player-join',
+        'chill-reel-player-state',
+        'chill-reel-player-heartbeat',
+        'chill-reel-player-leave',
+        'chill-reel-player-action',
+        'chill-reel-player-spin-start',
+        'chill-reel-player-spin',
+        'chill-reel-player-spin-finish',
+        'chill-reel-player-letter',
+        'chill-reel-player-solve',
+        'chill-reel-reveal-letter',
+        'chill-reel-next-puzzle',
         'network-info',
         'session-tracks-receive',
         'session-tracks-status',

@@ -1,0 +1,52 @@
+.wheel {
+  position: relative;
+  overflow: hidden;
+  background: #0c2b28;
+  will-change: transform;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  width: 280px;
+  height: 280px;
+}
+.wheel.pressed{cursor:grabbing;filter:brightness(1.15);box-shadow:0 0 48px rgba(54,217,255,.48)}
+.wheel-hub {
+  position: absolute;
+  z-index: 4;
+  inset: 50% auto auto 50%;
+  display: grid;
+  place-items: center;
+  width: 82px;
+  height: 82px;
+  transform: translate(-50%,-50%);
+  border: 5px solid #fff;
+  border-radius: 50%;
+  background: #09130f;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.05;
+  text-align: center;
+  box-shadow: 0 0 18px rgba(0,0,0,.65);
+}
+.wheel-segment-label {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: 58px;
+  margin-left: -29px;
+  padding: 2px 3px;
+  border-radius: 5px;
+  background: rgba(0,0,0,.28);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 1px 3px #000;
+  transform-origin: 29px 0;
+}
+.wheel-segment-label.special{width:70px;margin-left:-35px;font-size:7px;line-height:1.05;transform-origin:35px 0;background:rgba(0,0,0,.55)}
+.wheel-art{position:absolute;z-index:2;inset:0;width:100%;height:100%;overflow:visible;pointer-events:none}.wheel-art text{font-family:Impact,Arial Black,Inter,sans-serif;font-weight:950;paint-order:stroke fill}.wheel-number{fill:#111;stroke:rgba(255,255,255,.48);stroke-width:1.2px;font-size:18px;letter-spacing:-1px}.wheel-special{fill:#fff;stroke:#000;stroke-width:2px;font-size:8px;letter-spacing:-.35px}
+@media(max-width:950px){.wheel{width:210px;height:210px}.wheel-segment-label{font-size:8px}.wheel-segment-label.special{font-size:6px}.wheel-hub{width:68px;height:68px;font-size:11px}}

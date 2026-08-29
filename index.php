@@ -14,6 +14,9 @@
   <link rel="stylesheet" href="assets/playlists-simple.css?v=5">
   <link rel="stylesheet" href="assets/playlist-integrator.css?v=7">
 <link rel="stylesheet" href="assets/quiz.css?v=13">
+  <link rel="stylesheet" href="assets/chill-reel.css?v=1">
+  <link rel="stylesheet" href="assets/chill-reel-players.css?v=1">
+  <link rel="stylesheet" href="assets/chill-reel-board.css?v=6">
   <link rel="stylesheet" href="assets/audio-analysis.css?v=38">
 </head>
 <body>
@@ -28,6 +31,7 @@
       <button class="nav-item active" data-view="dashboard" data-mode="regia"><span>LIVE</span> Live desk</button>
       <button class="nav-item" data-view="requests" data-mode="regia"><span>REQ</span> Richieste <i id="request-badge">0</i></button>
       <button class="nav-item" data-view="quiz" data-mode="regia"><span>QUIZ</span> Quiz Live</button>
+      <button class="nav-item" data-view="chill-reel" data-mode="regia"><span>REEL</span> Chill Reel</button>
       <button class="nav-item" data-view="suggestions" data-mode="regia"><span>NEXT</span> Prossimo brano</button>
       <button class="nav-item" data-view="studio-dashboard" data-mode="studio"><span>HOME</span> Dashboard Studio</button>
       <button class="nav-item" data-view="library" data-mode="studio"><span>LIB</span> Libreria</button>
@@ -179,7 +183,7 @@
     </section>
 
     <section class="view" id="view-quiz">
-      <div class="button-row"><button type="button" class="button ghost" data-public-module="quiz">Quiz: ...</button></div>
+      <div class="button-row"><button type="button" class="button ghost" data-public-module="quiz">Quiz Live: ...</button><button type="button" class="button ghost" data-public-game="chill_reel">Chill Reel: ...</button></div>
       <div class="request-header panel"><div><span class="kicker">QUIZ LIVE</span><h2>Regia Quiz</h2><p>Domande, partecipanti, timer e classifica live.</p><div class="quiz-links"><a class="button ghost" id="quiz-public-link-top" target="_blank">Pagina mobile</a><a class="button ghost" id="quiz-screen-link-top" target="_blank">Schermo esterno</a></div></div><div class="qr-placeholder"><img src="qr.php?target=public" alt="QR richieste e quiz"></div></div>
       <div id="request-mode-quiz">
         <div class="quiz-group-toolbar panel"><label><span>GRUPPO / SERATA</span><select id="quiz-group-select"><option value="0">Senza gruppo / Archivio</option></select></label><label><span>NOME NUOVO GRUPPO</span><input id="quiz-group-name" maxlength="150" placeholder="Compleanno Giulia"></label><label><span>DATA</span><input id="quiz-group-date" type="date"></label><label><span>IMMAGINE SERATA</span><input id="quiz-group-image" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" class="button ghost" id="quiz-group-image-remove">Rimuovi immagine</button><button type="button" class="button primary" id="quiz-group-create">Nuovo gruppo</button><button type="button" class="button ghost" id="quiz-group-duplicate">Duplica</button><button type="button" class="button accent" id="quiz-group-activate">Attiva serata</button><button type="button" class="button ghost" id="quiz-next-question">Prossima domanda</button><span id="quiz-group-status" class="badge">Archivio</span></div>
@@ -190,6 +194,36 @@
         <div class="quiz-bottom-grid"><article class="panel"><div class="panel-label"><span>DOMANDE PREPARATE</span></div><div id="quiz-history" class="quiz-history empty-state">Nessuna domanda.</div></article><article class="panel"><div class="panel-label"><span>PARTECIPANTI LIVE</span><b id="quiz-participant-count">0 online</b></div><div id="quiz-participants" class="quiz-participants empty-state">Nessun partecipante.</div></article></div>
       </div>
     </section>
+    </section>
+
+    <section class="view" id="view-chill-reel">
+      <div class="section-head"><div><span class="kicker">GIOCO A TAVOLI</span><h2>Regia Chill Reel</h2><p>Una manche padre, più frasi figlie, turno ciclico dall'ordine di iscrizione.</p></div><div class="chill-reel-head-actions"><a class="button ghost" href="chill-reel-player.php" target="_blank">Pagina player ↗</a><a class="button ghost" href="quiz-screen.php" target="_blank">Schermo esterno ↗</a><button type="button" class="button ghost" data-public-module="quiz">Quiz Live: OFF</button><span id="chill-reel-game-status" class="badge">Non attivo</span><button type="button" class="button ghost" id="chill-reel-activate" data-public-game="chill_reel">Chill Reel: OFF</button></div></div>
+      <article class="panel chill-reel-setup">
+        <div class="panel-label"><span>PREPARAZIONE MANCHE</span></div>
+        <div class="chill-reel-setup-grid">
+          <label>Manche salvate<select id="chill-reel-game-select"><option value="">Nuova manche</option></select></label>
+          <label>Nome manche<input id="chill-reel-name" maxlength="150" placeholder="Es. Compleanno Amina"></label>
+          <label>Tavoli, uno per riga<textarea id="chill-reel-tables" rows="6" placeholder="Tavolo 1&#10;Tavolo 2&#10;Tavolo 3"></textarea></label>
+          <label>Frasi, una per riga: Categoria | Soluzione<textarea id="chill-reel-puzzles" rows="6" placeholder="Film | RITORNO AL FUTURO&#10;Musica | LA VITA È BELLA"></textarea></label>
+        </div>
+        <div class="button-row"><button type="button" class="button primary" id="chill-reel-create">Crea manche</button><button type="button" class="button accent" id="chill-reel-save" disabled>Salva modifiche</button></div>
+      </article>
+      <div class="chill-reel-control-grid">
+        <article class="panel">
+          <div class="panel-label"><span>TAVOLI E PRENOTAZIONE</span><b id="chill-reel-current-table">Nessun turno</b></div>
+          <div id="chill-reel-table-list" class="chill-reel-list empty-state">Crea o seleziona una manche.</div>
+          <div class="button-row"><button type="button" class="button ghost" id="chill-reel-next-turn" disabled>Turno successivo</button></div>
+        </article>
+        <article class="panel chill-reel-live-panel">
+          <div class="panel-label"><span>FRASE ATTIVA</span><b id="chill-reel-puzzle-progress">0 / 0</b></div>
+          <small id="chill-reel-category">Nessuna categoria</small>
+          <div id="chill-reel-board" class="chill-reel-board empty-state">Nessuna frase attiva.</div>
+          <div class="chill-reel-letter-control"><input id="chill-reel-letter" maxlength="1" placeholder="Lettera"><button type="button" class="button ghost" id="chill-reel-reveal" disabled>Inserisci lettera</button></div>
+          <label>Vincitore manche figlia<select id="chill-reel-winner"><option value="0">Nessun vincitore</option></select></label>
+          <button type="button" class="button primary" id="chill-reel-next-puzzle" disabled>Chiudi frase e passa alla successiva</button>
+        </article>
+      </div>
+      <article class="panel"><div class="panel-label"><span>FRASI DELLA MANCHE</span></div><div id="chill-reel-puzzle-list" class="chill-reel-puzzle-list empty-state">Nessuna frase.</div></article>
     </section>
 
     <section class="view" id="view-playlists">
@@ -282,7 +316,7 @@
 <dialog id="bulk-tag-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="bulk-tag-editor"><span class="kicker">LISTA FILTRATA VISIBILE</span><h2>Tag globale</h2><p id="bulk-tag-count">0 brani selezionati</p><p class="form-note">Primo clic: <b class="bulk-add-label">verde, aggiungi</b> · secondo clic: <b class="bulk-remove-label">rosso, rimuovi</b> · terzo clic: annulla.</p><div id="bulk-tag-picker" class="tag-picker"></div><button type="button" class="button primary" id="apply-bulk-tags">Applica ai brani visibili</button></div></dialog>
 <dialog id="playlist-builder-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="playlist-builder"><span class="kicker">COMPLETA PLAYLIST</span><h2>Aggiungi brani dalla libreria</h2><div class="playlist-builder-grid"><label>Numero brani<input id="builder-limit" type="number" min="1" max="100" value="10"></label><label>Macrogenere<select id="builder-macro-genre" multiple size="5"><option value="">Qualsiasi macro</option></select></label><label>Genere cartella<select id="builder-folder-genre" multiple size="5"><option value="">Qualsiasi cartella</option></select></label><label>Microgenere<select id="builder-genre" multiple size="6"><option value="">Qualsiasi microgenere</option></select></label><label>Tag<select id="builder-tag" multiple size="6"><option value="">Qualsiasi tag</option></select></label><label>BPM minimo<input id="builder-bpm-min" type="number"></label><label>BPM massimo<input id="builder-bpm-max" type="number"></label><label>Camelot compatibile<select id="builder-camelot" multiple size="5"><option value="">Qualsiasi Camelot</option></select></label><label>Energia minima<select id="builder-energy" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Ballabilità minima<select id="builder-dance" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Popolarità minima<input id="builder-popularity" type="number" min="0" max="100"></label><label>Anno da<input id="builder-year-min" type="number"></label><label>Anno a<input id="builder-year-max" type="number"></label><label>Inserisci<select id="builder-position"><option value="end">In fondo</option></select></label></div><label class="builder-quality"><input id="builder-mp3-320" type="checkbox" checked> Solo MP3 320 kbps o superiore</label><div class="button-row"><button type="button" class="button accent" id="builder-search">Trova candidati</button><button type="button" class="button primary" id="builder-add" disabled>Aggiungi selezionati</button></div><div id="builder-results" class="builder-results"><div class="empty-state">Imposta i criteri e cerca.</div></div></div></dialog>
 <div id="app-toast" class="toast"></div>
-  <script src="assets/app.js?v=61"></script>
+  <script src="assets/app.js?v=64"></script>
   <script src="assets/library-quality.js?v=4"></script>
   <script src="assets/spotify-export-filter.js?v=7"></script>
   <script src="assets/library-sort.js?v=2"></script>
@@ -297,4 +331,5 @@
   <script src="assets/vdj-years.js?v=5"></script>
   <script src="assets/playlist-builder.js?v=21"></script>
 <script src="assets/quiz-control.js?v=28"></script>
+  <script src="assets/chill-reel.js?v=15"></script>
 </body></html>

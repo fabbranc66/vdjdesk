@@ -84,6 +84,38 @@ CREATE TABLE IF NOT EXISTS quiz_bets (
     CONSTRAINT fk_quiz_bet_question FOREIGN KEY(question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
     CONSTRAINT fk_quiz_bet_participant FOREIGN KEY(participant_id) REFERENCES quiz_participants(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS chill_reel_games (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(150) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'draft', current_puzzle_id INT UNSIGNED NULL,
+    current_table_id INT UNSIGNED NULL, starter_table_id INT UNSIGNED NULL,
+    solve_enabled_table_id INT UNSIGNED NULL,
+    wheel_result VARCHAR(40) NOT NULL DEFAULT '', wheel_spin_token INT UNSIGNED NOT NULL DEFAULT 0,
+    wheel_spinning TINYINT NOT NULL DEFAULT 0, wheel_spun_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_chill_reel_games_status(status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS chill_reel_tables (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, game_id INT UNSIGNED NOT NULL,
+    name VARCHAR(80) NOT NULL, registration_order INT NOT NULL DEFAULT 0, score INT NOT NULL DEFAULT 0,
+    public_token CHAR(36) NULL, local_identifier CHAR(36) NULL,
+    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, is_online TINYINT NOT NULL DEFAULT 0,
+    left_at DATETIME NULL, status VARCHAR(20) NOT NULL DEFAULT 'active', rejoin_requested_at DATETIME NULL,
+    booked_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_chill_reel_table_token(public_token),
+    UNIQUE KEY uq_chill_reel_table_local(game_id,local_identifier),
+    KEY idx_chill_reel_tables_game_order(game_id,registration_order),
+    CONSTRAINT fk_chill_reel_table_game FOREIGN KEY(game_id) REFERENCES chill_reel_games(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS chill_reel_puzzles (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, game_id INT UNSIGNED NOT NULL,
+    category VARCHAR(100) NOT NULL DEFAULT '', solution VARCHAR(500) NOT NULL,
+    sort_order INT NOT NULL DEFAULT 0, status VARCHAR(20) NOT NULL DEFAULT 'draft',
+    revealed_letters VARCHAR(100) NOT NULL DEFAULT '', winner_table_id INT UNSIGNED NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_chill_reel_puzzles_game_order(game_id,sort_order),
+    CONSTRAINT fk_chill_reel_puzzle_game FOREIGN KEY(game_id) REFERENCES chill_reel_games(id) ON DELETE CASCADE,
+    CONSTRAINT fk_chill_reel_puzzle_winner FOREIGN KEY(winner_table_id) REFERENCES chill_reel_tables(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS queue (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, track_id BIGINT UNSIGNED NOT NULL, source VARCHAR(30) NOT NULL DEFAULT 'dj',
     position INT NOT NULL DEFAULT 0, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,

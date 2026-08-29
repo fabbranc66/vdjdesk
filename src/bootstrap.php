@@ -278,6 +278,25 @@ function migrateMariaDb(PDO $pdo): void
     if(!in_array('local_identifier',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN local_identifier CHAR(36) NULL UNIQUE AFTER public_token');
     $groupColumns=array_column($pdo->query('SHOW COLUMNS FROM quiz_groups')->fetchAll(),'Field');
     if(!in_array('image_path',$groupColumns,true))$pdo->exec("ALTER TABLE quiz_groups ADD COLUMN image_path VARCHAR(255) NOT NULL DEFAULT '' AFTER description");
+    $chillGameColumns=array_column($pdo->query('SHOW COLUMNS FROM chill_reel_games')->fetchAll(),'Field');
+    if(!in_array('wheel_result',$chillGameColumns,true))$pdo->exec("ALTER TABLE chill_reel_games ADD COLUMN wheel_result VARCHAR(40) NOT NULL DEFAULT ''");
+    if(!in_array('wheel_spin_token',$chillGameColumns,true))$pdo->exec('ALTER TABLE chill_reel_games ADD COLUMN wheel_spin_token INT UNSIGNED NOT NULL DEFAULT 0');
+    if(!in_array('wheel_spinning',$chillGameColumns,true))$pdo->exec('ALTER TABLE chill_reel_games ADD COLUMN wheel_spinning TINYINT NOT NULL DEFAULT 0');
+    if(!in_array('wheel_spun_at',$chillGameColumns,true))$pdo->exec('ALTER TABLE chill_reel_games ADD COLUMN wheel_spun_at DATETIME NULL');
+    if(!in_array('solve_enabled_table_id',$chillGameColumns,true))$pdo->exec('ALTER TABLE chill_reel_games ADD COLUMN solve_enabled_table_id INT UNSIGNED NULL');
+    $chillTableColumns=array_column($pdo->query('SHOW COLUMNS FROM chill_reel_tables')->fetchAll(),'Field');
+    foreach([
+        'public_token'=>'CHAR(36) NULL',
+        'local_identifier'=>'CHAR(36) NULL',
+        'last_seen_at'=>'DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP',
+        'is_online'=>'TINYINT NOT NULL DEFAULT 0',
+        'left_at'=>'DATETIME NULL',
+        'status'=>"VARCHAR(20) NOT NULL DEFAULT 'active'",
+        'rejoin_requested_at'=>'DATETIME NULL',
+    ] as $column=>$definition)if(!in_array($column,$chillTableColumns,true))$pdo->exec("ALTER TABLE chill_reel_tables ADD COLUMN $column $definition");
+    $chillTableIndexes=array_column($pdo->query('SHOW INDEX FROM chill_reel_tables')->fetchAll(),'Key_name');
+    if(!in_array('uq_chill_reel_table_token',$chillTableIndexes,true))$pdo->exec('ALTER TABLE chill_reel_tables ADD UNIQUE KEY uq_chill_reel_table_token(public_token)');
+    if(!in_array('uq_chill_reel_table_local',$chillTableIndexes,true))$pdo->exec('ALTER TABLE chill_reel_tables ADD UNIQUE KEY uq_chill_reel_table_local(game_id,local_identifier)');
     $pdo->exec("CREATE TABLE IF NOT EXISTS quiz_bets (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, question_id INT UNSIGNED NOT NULL,
         participant_id INT UNSIGNED NOT NULL, mode VARCHAR(20) NOT NULL,
