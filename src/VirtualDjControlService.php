@@ -20,16 +20,23 @@ final class VirtualDjControlService
 
     public function currentTrack(): ?array
     {
-        $filePath = canonicalPath($this->request('query', 'deck active get_filepath'));
-        if ($filePath === '' || str_starts_with(strtolower($filePath), 'error:')) return null;
-        $statement = $this->pdo->prepare('SELECT * FROM tracks WHERE file_path=? LIMIT 1');
-        $statement->execute([$filePath]);
-        $track = $statement->fetch() ?: [];
-        $artist = trim($this->request('query', 'deck active get_artist'));
-        $title = trim($this->request('query', 'deck active get_title'));
-        $bpm = trim($this->request('query', 'deck active get_bpm'));
-        $key = trim($this->request('query', 'deck active get_key'));
-        $genre = trim($this->request('query', 'deck active get_genre'));
+        $deck=(int)$this->request('query','get_deck');
+        if(!in_array($deck,[1,2],true))$deck=1;
+        $deckPrefix='deck '.$deck.' ';
+        $filePath = canonicalPath($this->request('query', $deckPrefix.'get_filepath'));
+        if (str_starts_with(strtolower($filePath), 'error:')) $filePath='';
+        $track=[];
+        if($filePath!==''){
+            $statement = $this->pdo->prepare('SELECT * FROM tracks WHERE file_path=? LIMIT 1');
+            $statement->execute([$filePath]);
+            $track = $statement->fetch() ?: [];
+        }
+        $artist = trim($this->request('query', $deckPrefix.'get_artist'));
+        $title = trim($this->request('query', $deckPrefix.'get_title'));
+        if($filePath===''&&$artist===''&&$title==='')return null;
+        $bpm = trim($this->request('query', $deckPrefix.'get_bpm'));
+        $key = trim($this->request('query', $deckPrefix.'get_key'));
+        $genre = trim($this->request('query', $deckPrefix.'get_genre'));
         return array_merge($track, [
             'id' => isset($track['id']) ? (int) $track['id'] : null,
             'artist' => $artist !== '' ? $artist : (string) ($track['artist'] ?? ''),
@@ -44,6 +51,7 @@ final class VirtualDjControlService
             'auto_tags' => autoTrackTags($track),
             'auto_tag_overrides' => autoTagOverrides($track),
             'on_air' => true,
+            'deck' => $deck,
         ]);
     }
 

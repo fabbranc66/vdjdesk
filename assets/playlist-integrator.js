@@ -37,7 +37,7 @@ function externalFlattenJson(data){
 }
 
 function externalStats(result){
-  $('#playlist-integrator-stats').innerHTML=`<span>Totale: <b>${result.total}</b></span><span class="ok">GiÃ  presenti: <b>${result.present}</b></span><span class="warn">Dubbi: <b>${result.doubtful}</b></span><span class="missing">Da scaricare: <b>${result.missing}</b></span>`;
+  $('#playlist-integrator-stats').innerHTML=`<span>Totale: <b>${result.total}</b></span><span class="ok">Già presenti: <b>${result.present}</b></span><span class="warn">Dubbi: <b>${result.doubtful}</b></span><span class="missing">Da scaricare: <b>${result.missing}</b></span>`;
   $('#playlist-integrator-actions').classList.remove('hidden');
 }
 
@@ -59,7 +59,7 @@ function externalSortedItems(items){
 
 function externalSortLabel(){
   const labels={position:'posizione JSON',artist:'artista',title:'titolo',duration:'durata',reason:'motivo'};
-  return `${labels[externalCompareSort.field]||externalCompareSort.field} ${externalCompareSort.direction>0?'â†‘':'â†“'}`;
+  return `${labels[externalCompareSort.field]||externalCompareSort.field} ${externalCompareSort.direction>0?'↑':'↓'}`;
 }
 
 function externalRender(filter='missing'){
@@ -68,20 +68,20 @@ function externalRender(filter='missing'){
   if(!externalCompareResult){target.innerHTML='Carica un JSON per iniziare.';return}
   const source=filter==='all'?['present','doubtful','missing'].flatMap(status=>externalCompareResult.items?.[status]||[]):externalCompareResult.items?.[filter]||[];
   const items=externalSortedItems(source);
-  const labels={all:'Playlist completa',missing:'Da scaricare',present:'GiÃ  presenti',doubtful:'Dubbi'};
+  const labels={all:'Playlist completa',missing:'Da scaricare',present:'Già presenti',doubtful:'Dubbi'};
   target.classList.remove('empty-state');
   target.innerHTML=items.length
-    ? `<div class="external-list-head"><div><strong>${labels[filter]} Â· ${items.length}</strong><small>${filter==='all'?'Tutti i brani importati, nello stesso ordine del JSON.':filter==='missing'?'JSON finale dei brani da scaricare.':filter==='doubtful'?'Controllo manuale: non li considero mancanti sicuri.':'Questi non vanno riscaricati.'}</small></div><small>Ordine: ${escapeHtml(externalSortLabel())}</small></div><div class="external-sortbar"><button type="button" data-external-sort="position">Pos. JSON</button><button type="button" data-external-sort="artist">Artista</button><button type="button" data-external-sort="title">Titolo</button><button type="button" data-external-sort="duration">Durata</button><button type="button" data-external-sort="reason">Motivo</button></div>${items.map(item=>externalRow(item,filter==='all'?(item.status||'missing'):filter)).join('')}`
+    ? `<div class="external-list-head"><div><strong>${labels[filter]} · ${items.length}</strong><small>${filter==='all'?'Tutti i brani importati, nello stesso ordine del JSON.':filter==='missing'?'JSON finale dei brani da scaricare.':filter==='doubtful'?'Controllo manuale: non li considero mancanti sicuri.':'Questi non vanno riscaricati.'}</small></div><small>Ordine: ${escapeHtml(externalSortLabel())}</small></div><div class="external-sortbar"><button type="button" data-external-sort="position">Pos. JSON</button><button type="button" data-external-sort="artist">Artista</button><button type="button" data-external-sort="title">Titolo</button><button type="button" data-external-sort="duration">Durata</button><button type="button" data-external-sort="reason">Motivo</button></div>${items.map(item=>externalRow(item,filter==='all'?(item.status||'missing'):filter)).join('')}`
     : `<div class="empty-state">Nessun brano in ${labels[filter].toLowerCase()}.</div>`;
 }
 
 function externalRow(item,filter){
   const spotify=externalSpotifyUrl(item);
   const match=(item.matches||[])[0];
-  const matchHtml=match?`<small class="external-match">Match: ${escapeHtml(match.artist||'')} â€” ${escapeHtml(match.title||'')} Â· ${escapeHtml(match.file_path||'')}</small>`:'';
+  const matchHtml=match?`<small class="external-match">Match: ${escapeHtml(match.artist||'')} — ${escapeHtml(match.title||'')} · ${escapeHtml(match.file_path||'')}</small>`:'';
   const actions=filter==='missing'?`<div class="external-actions">${spotify?`<a class="button ghost" target="vdjdesk_spotify" href="${escapeHtml(spotify)}">Apri Spotify</a>`:''}</div>`:'';
   const titleDots=filter==='doubtful'?externalTitleDots(item):'';
-  return `<article class="external-row ${filter}" data-spotify-id="${escapeHtml(item.spotify_id||'')}"><div class="external-main"><div class="external-title-line"><b>${escapeHtml(item.artist||'Artista sconosciuto')} â€” ${escapeHtml(item.title||'Titolo mancante')}</b>${titleDots}</div><small>${escapeHtml(item.reason||'')}</small>${matchHtml}<div class="external-meta"><span>#${escapeHtml(String(item.position||''))}</span>${item.spotify_id?`<span>ID ${escapeHtml(item.spotify_id)}</span>`:''}${item.isrc?`<span>ISRC ${escapeHtml(item.isrc)}</span>`:''}${item.duration?`<span>${formatDuration(item.duration)}</span>`:''}</div></div>${actions}</article>`;
+  return `<article class="external-row ${filter}" data-spotify-id="${escapeHtml(item.spotify_id||'')}"><div class="external-main"><div class="external-title-line"><b>${escapeHtml(item.artist||'Artista sconosciuto')} — ${escapeHtml(item.title||'Titolo mancante')}</b>${titleDots}</div><small>${escapeHtml(item.reason||'')}</small>${matchHtml}<div class="external-meta"><span>#${escapeHtml(String(item.position||''))}</span>${item.spotify_id?`<span>ID ${escapeHtml(item.spotify_id)}</span>`:''}${item.isrc?`<span>ISRC ${escapeHtml(item.isrc)}</span>`:''}${item.duration?`<span>${formatDuration(item.duration)}</span>`:''}</div></div>${actions}</article>`;
 }
 
 function externalQuery(item){return [item.artist,item.title].filter(Boolean).join(' ').trim()}

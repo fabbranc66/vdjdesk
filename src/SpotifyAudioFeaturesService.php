@@ -175,7 +175,7 @@ final class SpotifyAudioFeaturesService
         $query = trim((string) $track['artist'] . ' ' . (string) $track['title']);
         $result = $this->apiRequest('/search?' . http_build_query(['q'=>$query,'type'=>'track','limit'=>10]));
         $match = $this->bestMatch($track, (array) ($result['tracks']['items'] ?? []));
-        if (!$match || $match['confidence'] < 74 || $match['title_score'] < 72) {
+        if (!$match || $match['confidence'] < 68 || $match['title_score'] < 72) {
             $message='Nessuna corrispondenza Spotify sicura'.($match?' ('.$match['confidence'].'%, titolo '.$match['title_score'].'%)':'').'.';
             $this->pdo->prepare("UPDATE tracks SET spotify_features_status='error',spotify_features_error=?,spotify_features_checked_at=CURRENT_TIMESTAMP WHERE id=?")->execute([$message,$trackId]);
             throw new RuntimeException($message);

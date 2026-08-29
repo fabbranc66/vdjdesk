@@ -315,7 +315,7 @@ try {
     if ($action === 'playlist-external-create' && $method === 'POST') jsonResponse((new PlaylistService())->createFromExternal((string)($data['name']??''),(array)($data['items']??[])));
     if ($action === 'playlist-external-folder-match' && $method === 'POST') jsonResponse((new PlaylistService())->matchExternalListToFolder((array)($data['items']??[]),(string)($data['folder']??'')));
     if ($action === 'playlist-external-apply-metadata' && $method === 'POST') jsonResponse((new PlaylistService())->applyExternalMetadata((array)($data['matches']??[])));
-    if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[]),true,(string)($data['name']??'')));
+    if ($action === 'playlist-save-order' && $method === 'POST') jsonResponse((new PlaylistService())->saveOrder((string)($data['file']??''),(array)($data['paths']??[]),true,(string)($data['name']??''),(string)($data['prefix']??'')));
     if ($action === 'playlist-insert-track' && $method === 'POST') jsonResponse((new PlaylistService())->insertTrackAfter((string)($data['file']??''),(int)($data['after_index']??-1),(string)($data['after_path']??''),(int)($data['track_id']??0)));
     if ($action === 'playlist-replace-track' && $method === 'POST') jsonResponse((new PlaylistService())->replaceInPlaylist((string)($data['file']??''),(string)($data['old_path']??''),(string)($data['new_path']??'')));
     if ($action === 'playlist-replace-all-missing' && $method === 'POST') jsonResponse((new PlaylistService())->replaceAllMissingFromLibrary((string)($data['file']??'')));
@@ -362,6 +362,30 @@ try {
         }
         remoteApiPassthrough($action, $method, $data);
     }
+    if ($action === 'public-modules') {
+        jsonResponse([
+            'requests_enabled' => setting('public_requests_enabled', '1') === '1',
+            'quiz_enabled' => setting('public_quiz_enabled', '1') === '1',
+        ]);
+    }
+    if ($action === 'public-modules-update' && $method === 'POST') {
+        if (!appUsesLocalFiles()) {
+            $expectedToken = (string)(sessionTracksUploadConfig()['token'] ?? '');
+            $receivedToken = (string)($data['control_token'] ?? '');
+            if ($expectedToken === '' || !hash_equals($expectedToken, $receivedToken)) jsonResponse(['error'=>'Controllo Regia non autorizzato.'], 403);
+        }
+        $values = [
+            'public_requests_enabled' => !empty($data['requests_enabled']) ? '1' : '0',
+            'public_quiz_enabled' => !empty($data['quiz_enabled']) ? '1' : '0',
+        ];
+        $statement = $pdo->prepare('INSERT INTO settings(`key`,value) VALUES(?,?) ON DUPLICATE KEY UPDATE value=VALUES(value)');
+        foreach ($values as $key => $value) $statement->execute([$key, $value]);
+        jsonResponse([
+            'ok' => true,
+            'requests_enabled' => $values['public_requests_enabled'] === '1',
+            'quiz_enabled' => $values['public_quiz_enabled'] === '1',
+        ]);
+    }
     if ($action === 'requests' && $method === 'GET') {
         $query = trim((string) ($_GET['q'] ?? ''));
         $requestEstimate->recalculate();
@@ -370,6 +394,7 @@ try {
         jsonResponse(['items'=>$statement->fetchAll()]);
     }
     if ($action === 'public-search') {
+        if (setting('public_requests_enabled', '1') !== '1') jsonResponse(['error'=>'Le richieste sono temporaneamente disabilitate.'], 403);
         if (!appUsesLocalFiles()) {
             $items = (new SessionTrackService($pdo))->publicSearch((string)($_GET['q'] ?? ''), 50);
             jsonResponse(['items'=>$items, 'source'=>'session-json']);
@@ -434,6 +459,7 @@ try {
         jsonResponse(['local'=>$local,'remote'=>$remote,'environment'=>appUsesLocalFiles()?'local':'hosting']);
     }
     if ($action === 'request-create' && $method === 'POST') {
+        if (setting('public_requests_enabled', '1') !== '1') jsonResponse(['error'=>'Le richieste sono temporaneamente disabilitate.'], 403);
         $query = trim((string) ($data['query'] ?? ''));
         if ($query === '') jsonResponse(['error'=>'Scrivi un brano o scegli un risultato.'], 422);
         $limitMinutes=max(0,(int)setting('request_interval_minutes','5'));
@@ -491,8 +517,14 @@ try {
     if ($action === 'quiz-launch' && $method === 'POST') jsonResponse($quiz->launch((int)($data['id']??0)));
     if ($action === 'quiz-close' && $method === 'POST') jsonResponse($quiz->setStatus((int)($data['id']??0),'closed'));
     if ($action === 'quiz-reveal' && $method === 'POST') jsonResponse($quiz->setStatus((int)($data['id']??0),'revealed'));
-    if ($action === 'quiz-join' && $method === 'POST') jsonResponse($quiz->join((string)($data['name']??''),(string)($data['token']??'')));
-    if ($action === 'quiz-answer' && $method === 'POST') jsonResponse($quiz->answer((int)($data['question_id']??0),(string)($data['token']??''),(string)($data['option']??'')));
+    if ($action === 'quiz-join' && $method === 'POST') {
+        if (setting('public_quiz_enabled', '1') !== '1') jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'], 403);
+        jsonResponse($quiz->join((string)($data['name']??''),(string)($data['token']??'')));
+    }
+    if ($action === 'quiz-answer' && $method === 'POST') {
+        if (setting('public_quiz_enabled', '1') !== '1') jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'], 403);
+        jsonResponse($quiz->answer((int)($data['question_id']??0),(string)($data['token']??''),(string)($data['option']??'')));
+    }
     if ($action === 'quiz-codex-suggest' && $method === 'POST') jsonResponse((new CodexQuizSuggestionService($pdo))->suggest((int)($data['track_id']??0),(string)($data['current_question']??'')));
     if ($action === 'quiz-heartbeat' && $method === 'POST') jsonResponse($quiz->heartbeat((string)($data['token']??''),true));
     if ($action === 'quiz-leave' && $method === 'POST') jsonResponse($quiz->heartbeat((string)($data['token']??''),false));
@@ -761,6 +793,8 @@ function shouldProxyToHosting(string $action): bool
 {
     return in_array($action, [
         'requests',
+        'public-modules',
+        'public-modules-update',
         'request-create',
         'request-status',
         'request-estimates-refresh',
@@ -879,6 +913,8 @@ function apiRegiaHostingActions(): array
         'bootstrap',
         'live',
         'requests',
+        'public-modules',
+        'public-modules-update',
         'public-search',
         'request-create',
         'request-status',
@@ -1071,6 +1107,7 @@ function remoteApiRequest(string $action, string $method = 'GET', array $data = 
     $headers = ['Accept: application/json'];
     $body = null;
     if ($method !== 'GET') {
+        if ($action === 'public-modules-update') $data['control_token'] = (string)(sessionTracksUploadConfig()['token'] ?? '');
         $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $headers[] = 'Content-Type: application/json';
     }

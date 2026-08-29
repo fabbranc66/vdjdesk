@@ -3,12 +3,18 @@ let quizToken=localStorage.getItem(quizTokenKey)||'';
 let quizPlayerState=null;
 let quizPublicClockOffset=0;
 let quizLastOpenQuestionId=0;
+let publicModules={requests_enabled:true,quiz_enabled:true};
 
 function activatePublicMode(mode){
+  if(mode==='requests'&&!publicModules.requests_enabled)mode=publicModules.quiz_enabled?'quiz':'disabled';
+  if(mode==='quiz'&&!publicModules.quiz_enabled)mode=publicModules.requests_enabled?'requests':'disabled';
   document.querySelectorAll('[data-public-mode]').forEach(item=>item.classList.toggle('active',item.dataset.publicMode===mode));
   $('#public-requests').classList.toggle('hidden',mode!=='requests');
   $('#public-quiz').classList.toggle('hidden',mode!=='quiz');
+  $('#public-disabled').classList.toggle('hidden',mode!=='disabled');
 }
+
+async function loadPublicModules(){try{const response=await fetch('api.php?action=public-modules',{cache:'no-store'});const data=await response.json();if(!response.ok)throw new Error(data.error||'Configurazione non disponibile');publicModules={requests_enabled:!!data.requests_enabled,quiz_enabled:!!data.quiz_enabled};document.querySelector('[data-public-mode="requests"]').classList.toggle('hidden',!publicModules.requests_enabled);document.querySelector('[data-public-mode="quiz"]').classList.toggle('hidden',!publicModules.quiz_enabled);activatePublicMode(document.querySelector('[data-public-mode].active')?.dataset.publicMode||'requests')}catch(error){}}
 
 document.addEventListener('click',event=>{
   const tab=event.target.closest('[data-public-mode]');
@@ -89,7 +95,7 @@ async function quizHeartbeat(){if(!quizToken)return;try{await fetch('api.php?act
 window.addEventListener('beforeunload',event=>{const question=quizPlayerState?.question;if(question?.status==='open'&&!question.answered){event.preventDefault();event.returnValue=''}});
 window.addEventListener('pagehide',()=>{if(quizToken)navigator.sendBeacon('api.php?action=quiz-leave',new Blob([JSON.stringify({token:quizToken})],{type:'application/json'}))});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')quizHeartbeat()});
-if(quizToken)activatePublicMode('quiz');
+loadPublicModules().then(()=>{if(quizToken)activatePublicMode('quiz')});
 refreshPublicQuiz();
 quizHeartbeat();
 setInterval(refreshPublicQuiz,700);

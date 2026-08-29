@@ -364,7 +364,7 @@ final class PlaylistService
         $previous=$number===1?12:$number-1;$next=$number===12?1:$number+1;$opposite=$letter==='A'?'B':'A';return [$number.$letter,$previous.$letter,$next.$letter,$number.$opposite];
     }
 
-    public function saveOrder(string $relative,array $paths,bool $renameByComposition=false,string $requestedName=''): array
+    public function saveOrder(string $relative,array $paths,bool $renameByComposition=false,string $requestedName='',string $namePrefix=''): array
     {
         $root=$this->root();$path=canonicalPath($root.'\\'.str_replace(['/','..'],['\\',''],$relative));
         if(!str_starts_with(strtoupper($path),strtoupper($root.'\\'))||!is_file($path))throw new RuntimeException('Playlist non valida.');
@@ -391,13 +391,13 @@ final class PlaylistService
             $lines[]='</VirtualFolder>';
             if(file_put_contents($path,implode("\r\n",$lines)."\r\n")===false)throw new RuntimeException('Salvataggio playlist VirtualDJ non riuscito.');
             $result=['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'VDJFOLDER'];
-            return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName)):$result;
+            return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName,$namePrefix)):$result;
         }
         $lines=['#EXTM3U'];
         foreach($clean as $trackPath){$metadata->execute([$trackPath]);$track=$metadata->fetch();if(!$track){$stored=$existing[$trackPath]??[];$track=array_shift($stored)?:[];$existing[$trackPath]=$stored;}$label=trim((string)($track['artist']??'').' - '.(string)($track['title']??pathinfo($trackPath,PATHINFO_FILENAME)),' -');$lines[]='#EXTINF:'.(int)($track['duration']??-1).','.$label;$lines[]=$trackPath;}
         if(file_put_contents($path,implode("\r\n",$lines)."\r\n")===false)throw new RuntimeException('Salvataggio playlist non riuscito.');
         $result=['ok'=>true,'tracks'=>count($clean),'path'=>$path,'format'=>'M3U'];
-        return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName)):$result;
+        return $renameByComposition?array_merge($result,$this->renameByMacroComposition($path,$clean,$requestedName,$namePrefix)):$result;
     }
 
     public function insertTrackAfter(string $relative,int $afterIndex,string $afterPath,int $trackId): array
@@ -419,7 +419,7 @@ final class PlaylistService
         return array_merge($result,['inserted_index'=>$resolvedIndex+1,'track_id'=>$trackId,'title'=>trim((string)$track['artist'].' - '.(string)$track['title'],' -')]);
     }
 
-    private function renameByMacroComposition(string $path,array $paths,string $requestedName=''): array
+    private function renameByMacroComposition(string $path,array $paths,string $requestedName='',string $namePrefix=''): array
     {
         $counts=[];$metadata=$this->pdo()->prepare('SELECT macro_genre FROM tracks WHERE file_path=? ORDER BY file_exists DESC LIMIT 1');
         foreach($paths as $trackPath){
@@ -434,9 +434,11 @@ final class PlaylistService
         foreach($order as $macro){$raw=$counts[$macro]*100/$total;$percentage=(int)floor($raw);$percentages[$macro]=['value'=>$percentage,'fraction'=>$raw-$percentage];$assigned+=$percentage;}
         $fractions=$percentages;uasort($fractions,fn(array $left,array $right): int=>$right['fraction']<=>$left['fraction']);
         foreach(array_slice(array_keys($fractions),0,100-$assigned) as $macro)$percentages[$macro]['value']++;
-        $parts=[];foreach($order as $macro){$code=strtoupper(substr((string)preg_replace('/[^A-Za-z0-9]/','',$macro),0,1));$parts[]=($code?:'A').'-'.$percentages[$macro]['value'].'%';}
+        $parts=[];foreach($order as $macro){$code=strtoupper(substr((string)preg_replace('/[^A-Za-z0-9]/','',$macro),0,1));$parts[]=($code?:'A').$percentages[$macro]['value'];}
         $extension=strtolower(pathinfo($path,PATHINFO_EXTENSION));
-        $compositionName='DjSet - '.implode('_',$parts);
+        $prefix=trim((string)preg_replace('/\s+/',' ',str_replace(['<','>',':','"','|','?','*','\\','/','_','-'],' ',$namePrefix)));
+        if($prefix==='')$prefix='DjSet';
+        $compositionName=$prefix.' - '.implode('-',$parts);
         $customName=trim(pathinfo(str_replace(['\\','/'], '', $requestedName),PATHINFO_FILENAME));
         $baseName=$customName!==''?preg_replace('/[<>:"|?*]/','',$customName):$compositionName;
         if(trim((string)$baseName)==='')$baseName=$compositionName;
@@ -463,11 +465,22 @@ final class PlaylistService
             $xml=@simplexml_load_file($path);if($xml){$position=0;foreach($xml->xpath('//song')?:[] as $song){$songPath=html_entity_decode((string)($song['path']??''),ENT_QUOTES|ENT_XML1,'UTF-8');if($songPath==='')continue;$title=html_entity_decode((string)($song['title']??''),ENT_QUOTES|ENT_XML1,'UTF-8');$remix=html_entity_decode((string)($song['remix']??''),ENT_QUOTES|ENT_XML1,'UTF-8');if($title!==''&&$remix!=='')$title.=' ('.$remix.')';$idx=(string)($song['idx']??'');$entries[]=['path'=>$songPath,'artist'=>html_entity_decode((string)($song['artist']??''),ENT_QUOTES|ENT_XML1,'UTF-8'),'title'=>$title,'_idx'=>$idx!==''?(int)$idx:null,'_pos'=>$position++];}usort($entries,fn(array $a,array $b): int=>($a['_idx']??$a['_pos'])<=>($b['_idx']??$b['_pos']) ?: ($a['_pos']<=>$b['_pos']));}
         }else foreach(file($path,FILE_IGNORE_NEW_LINES|FILE_SKIP_EMPTY_LINES)?:[] as $line){$line=trim(str_replace("\xEF\xBB\xBF",'',trim($line)));if($line!==''&&!str_starts_with($line,'#')&&!str_contains(strtoupper($line),'#EXTVDJ:'))$entries[]=['path'=>$line,'artist'=>'','title'=>''];}
         $metadata=db()->prepare('SELECT id FROM tracks WHERE file_path=? ORDER BY file_exists DESC LIMIT 1');$library=new LibraryService(db());
-        $musicRootPrefix=strtoupper(definitiveMusicRoot().'\\');$items=[];foreach($entries as $entry){$rawTrackPath=(string)$entry['path'];$external=str_starts_with(strtoupper($rawTrackPath),'KRDESK://');$trackPath=$external?$rawTrackPath:str_replace('/','\\',$rawTrackPath);if(!$external&&!preg_match('/^[A-Za-z]:\\\\/',$trackPath)){$relative=$trackPath;$desktop=(string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Desktop';$candidates=[canonicalPath(dirname($path).'\\'.$relative),canonicalPath($desktop.'\\'.$relative),canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\'.$relative)];$existing=array_values(array_filter($candidates,'is_file'));$trackPath=$existing[0]??$candidates[1];}$exists=!$external&&is_file($trackPath);$metadata->execute([$trackPath]);$id=(int)($metadata->fetchColumn()?:0);$track=$id?$library->find($id):null;if(!$track){$fallbackArtist=trim((string)$entry['artist']);$fallbackTitle=trim((string)$entry['title']);if($fallbackTitle===''||$fallbackArtist===''){$base=pathinfo($trackPath,PATHINFO_FILENAME);if(str_contains($base,' - ')){[$left,$right]=array_map('trim',explode(' - ',$base,2));if($fallbackArtist==='')$fallbackArtist=$left;if($fallbackTitle==='')$fallbackTitle=$right;}elseif($fallbackTitle==='')$fallbackTitle=$base;}$track=['id'=>0,'artist'=>$fallbackArtist,'title'=>$fallbackTitle,'file_path'=>$trackPath,'file_name'=>basename($trackPath),'folder'=>dirname($trackPath),'bpm'=>null,'camelot'=>'','musical_key'=>'','duration'=>null,'genre'=>'','year'=>null,'bitrate'=>null,'tags'=>[],'version'=>'','spotify_mode'=>null];}$items[]=array_merge($track,['_playlist_exists'=>$exists,'_playlist_definitive'=>$exists&&str_starts_with(strtoupper(canonicalPath($trackPath)),$musicRootPrefix),'_playlist_path'=>$trackPath]);}
+        $musicRootPrefix=strtoupper(definitiveMusicRoot().'\\');$items=[];foreach($entries as $entry){$entry['artist']=$this->cleanPlaylistText((string)($entry['artist']??''));$entry['title']=$this->cleanPlaylistText((string)($entry['title']??''));$rawTrackPath=(string)$entry['path'];$external=str_starts_with(strtoupper($rawTrackPath),'KRDESK://');$trackPath=$external?$rawTrackPath:str_replace('/','\\',$rawTrackPath);if(!$external&&!preg_match('/^[A-Za-z]:\\\\/',$trackPath)){$relative=$trackPath;$desktop=(string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\Desktop';$candidates=[canonicalPath(dirname($path).'\\'.$relative),canonicalPath($desktop.'\\'.$relative),canonicalPath((string)(getenv('USERPROFILE')?:'C:\\Users\\fabbr').'\\'.$relative)];$existing=array_values(array_filter($candidates,'is_file'));$trackPath=$existing[0]??$candidates[1];}$exists=!$external&&is_file($trackPath);$metadata->execute([$trackPath]);$id=(int)($metadata->fetchColumn()?:0);$track=$id?$library->find($id):null;if(!$track){$fallbackArtist=trim((string)$entry['artist']);$fallbackTitle=trim((string)$entry['title']);if($fallbackTitle===''||$fallbackArtist===''){$base=pathinfo($trackPath,PATHINFO_FILENAME);if(str_contains($base,' - ')){[$left,$right]=array_map('trim',explode(' - ',$base,2));if($fallbackArtist==='')$fallbackArtist=$left;if($fallbackTitle==='')$fallbackTitle=$right;}elseif($fallbackTitle==='')$fallbackTitle=$base;}$track=['id'=>0,'artist'=>$this->cleanPlaylistText($fallbackArtist),'title'=>$this->cleanPlaylistText($fallbackTitle),'file_path'=>$trackPath,'file_name'=>basename($trackPath),'folder'=>dirname($trackPath),'bpm'=>null,'camelot'=>'','musical_key'=>'','duration'=>null,'genre'=>'','year'=>null,'bitrate'=>null,'tags'=>[],'version'=>'','spotify_mode'=>null];}$track['artist']=$this->cleanPlaylistText((string)($track['artist']??''));$track['title']=$this->cleanPlaylistText((string)($track['title']??''));$items[]=array_merge($track,['_playlist_exists'=>$exists,'_playlist_definitive'=>$exists&&str_starts_with(strtoupper(canonicalPath($trackPath)),$musicRootPrefix),'_playlist_path'=>$trackPath]);}
         $playlistLookup=$this->pdo()->prepare('SELECT * FROM tracks WHERE normalized_artist=? AND normalized_title=? ORDER BY file_exists DESC,id LIMIT 1');
         foreach($items as &$item){if((int)($item['id']??0)>0)continue;$artist=trim((string)($item['artist']??''));$title=trim((string)($item['title']??''));if($artist===''||$title==='')continue;$playlistLookup->execute([normalizeText($artist),normalizeTitle($title)]);$row=$playlistLookup->fetch(PDO::FETCH_ASSOC);if(!$row)continue;$row['vdj_linked']=0;$physicalPath=(string)$item['file_path'];$item=array_merge((new LibraryService($this->pdo()))->hydrateTrack($row),$item);$item['id']=(int)$row['id'];$item['artist']=(string)$row['artist'];$item['title']=(string)$row['title'];$item['spotify_id']=(string)($row['spotify_id']??'');$item['spotify_url']=(string)($row['spotify_url']??'');$item['file_path']=$physicalPath;$item['_playlist_exists']=false;}
         unset($item);
         return $items;
+    }
+
+    private function cleanPlaylistText(string $value): string
+    {
+        $value=trim($value);
+        if($value===''||!preg_match('/[\x{00C2}\x{00C3}\x{00E2}]/u',$value))return $value;
+        $repaired=@mb_convert_encoding($value,'Windows-1252','UTF-8');
+        if(!is_string($repaired)||!mb_check_encoding($repaired,'UTF-8'))return $value;
+        preg_match_all('/[\x{00C2}\x{00C3}\x{00E2}]/u',$value,$before);
+        preg_match_all('/[\x{00C2}\x{00C3}\x{00E2}]/u',$repaired,$after);
+        return count($after[0])<count($before[0])?$repaired:$value;
     }
 
 }

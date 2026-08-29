@@ -33,14 +33,17 @@ window.preparePlaylistScrollRestore=preparePlaylistScrollRestore;
 async function loadPlaylists(){
   const select=$('#playlist-select');
   const request=++playlistLoadRequest;
-  const selected=select.dataset.selected||select.value;
+  const selected=select.dataset.selected||select.value||localStorage.getItem('krdesk_selected_playlist')||'';
   select.innerHTML='<option value="">Lettura playlist...</option>';
   try{
     const data=await api('playlists');
     if(request!==playlistLoadRequest)return;
     $('#playlist-root').textContent=data.root;
-    select.innerHTML=data.items.length?data.items.map(item=>`<option value="${escapeHtml(item.relative)}">${escapeHtml(item.name)} - ${item.tracks} brani</option>`).join(''):'<option value="">Nessuna playlist disponibile</option>';
-    if(data.items.length){const relative=data.items.some(item=>item.relative===selected)?selected:data.items[0].relative;select.value=relative;await openPlaylist(relative)}else $('#playlist-results').innerHTML='<div class="empty-state panel">Nessuna playlist disponibile.</div>';
+    const sortedItems=[...data.items].sort((left,right)=>String(left.name).localeCompare(String(right.name),'it',{sensitivity:'base',numeric:true}));
+    const selectedIndex=sortedItems.findIndex(item=>item.relative===selected);
+    if(selectedIndex>0)sortedItems.unshift(...sortedItems.splice(selectedIndex,1));
+    select.innerHTML=sortedItems.length?sortedItems.map(item=>`<option value="${escapeHtml(item.relative)}">${escapeHtml(item.name)} - ${item.tracks} brani</option>`).join(''):'<option value="">Nessuna playlist disponibile</option>';
+    if(sortedItems.length){const relative=sortedItems.some(item=>item.relative===selected)?selected:sortedItems[0].relative;select.value=relative;await openPlaylist(relative)}else $('#playlist-results').innerHTML='<div class="empty-state panel">Nessuna playlist disponibile.</div>';
   }catch(error){$('#playlist-results').innerHTML=`<div class="empty-state panel">${escapeHtml(error.message)}</div>`}
 }
 
@@ -49,6 +52,7 @@ async function openPlaylist(relative){
   playlistSavedScroll=scrollPosition;
   playlistScrollRestorePending=true;
   $('#playlist-select').dataset.selected=relative;
+  localStorage.setItem('krdesk_selected_playlist',relative);
   $('#playlist-results').innerHTML='<div class="empty-state">Lettura brani...</div>';
   const data=await api(`playlist-detail&file=${encodeURIComponent(relative)}`);
   playlistAllTracks=[...data.items];
@@ -258,12 +262,22 @@ document.addEventListener('audio-analysis-completed',event=>{
 });
 
 function reorderPlaylist(compare){playlistAllTracks.sort(compare);applyPlaylistFilters()}
+if($('#playlist-save')&&!$('#playlist-name-prefix')){
+  const label=document.createElement('label');
+  label.className='playlist-name-prefix';
+  label.innerHTML='<small>Nome</small><input id="playlist-name-prefix" maxlength="80">';
+  $('#playlist-save').before(label);
+  $('#playlist-name-prefix').value=localStorage.getItem('krdesk_playlist_name_prefix')||'DjSet';
+  $('#playlist-name-prefix').addEventListener('change',event=>localStorage.setItem('krdesk_playlist_name_prefix',event.target.value.trim()||'DjSet'));
+}
 async function saveVisiblePlaylist(){
   const file=$('#playlist-select').value;
   if(!file)return;
   const visibleTracks=[...state.tracks];
   if(!visibleTracks.length){toast('Nessun brano visualizzato da salvare');return}
-  const payload={file,paths:visibleTracks.map(track=>track.file_path)};
+  const prefix=$('#playlist-name-prefix').value.trim()||'DjSet';
+  localStorage.setItem('krdesk_playlist_name_prefix',prefix);
+  const payload={file,paths:visibleTracks.map(track=>track.file_path),prefix};
   let result=await post('playlist-save-order',payload);
   if(result.name_conflict){
     const proposed=window.prompt('Esiste già una playlist con le stesse percentuali. Conferma o modifica il nuovo nome:',result.suggested_name||'');
@@ -315,10 +329,20 @@ function takePlaylistCamelotBlock(queue,size,previousTrack,macro){
   }
   return{block,fallbacks};
 }
-function buildKrGenreBlocks(){
+function playlistCurrentMacro(track){
+  const folderGenre=String(track.folder_genre||'').trim();
+  if(folderGenre){
+    const mapped=[...new Set((state.taxonomyOptions?.folders||[]).filter(item=>String(item.folder_genre||'').trim()===folderGenre).map(item=>String(item.macro_genre||'').trim()).filter(Boolean))];
+    if(mapped.length===1)return mapped[0];
+  }
+  return String(track.macro_genre||'Senza macrogenere').trim()||'Senza macrogenere';
+}
+async function buildKrGenreBlocks(){
+  state.taxonomyOptions=await api('taxonomy-options');
   const groups=new Map();
   for(const track of playlistAllTracks){
-    const macro=String(track.macro_genre||'Senza macrogenere').trim()||'Senza macrogenere';
+    const macro=playlistCurrentMacro(track);
+    track.macro_genre=macro;
     if(!groups.has(macro))groups.set(macro,[]);
     groups.get(macro).push(track);
   }
@@ -329,13 +353,16 @@ function buildKrGenreBlocks(){
   const total=playlistAllTracks.length;
   let remaining=playlistAllTracks.length;
   let previousMacro='';
+  let consecutiveMacroTracks=0;
   let previousTrack=null;
   let fallbacks=0;
   while(remaining>0){
     const candidates=macroOrder.filter(macro=>(groups.get(macro)?.length||0)>0);
-    const bpmCompatible=previousTrack?candidates.filter(macro=>groups.get(macro).some(track=>playlistMacroBpmCompatible(previousTrack,track))):candidates;
+    const forcedAlternatives=consecutiveMacroTracks>=4?candidates.filter(macro=>macro!==previousMacro):[];
+    const eligibleCandidates=forcedAlternatives.length?forcedAlternatives:candidates;
+    const bpmCompatible=previousTrack?eligibleCandidates.filter(macro=>groups.get(macro).some(track=>playlistMacroBpmCompatible(previousTrack,track))):eligibleCandidates;
     const compatible=previousTrack?bpmCompatible.filter(macro=>groups.get(macro).some(track=>playlistMacroBpmCompatible(previousTrack,track)&&playlistCamelotRecommended(previousTrack,track,String(previousTrack.macro_genre||'')!==macro))):[];
-    let selectable=compatible.length?compatible:bpmCompatible.length?bpmCompatible:candidates;
+    let selectable=compatible.length?compatible:bpmCompatible.length?bpmCompatible:eligibleCandidates;
     if(selectable.length>1){
       const alternatives=selectable.filter(macro=>macro!==previousMacro);
       if(alternatives.length)selectable=alternatives;
@@ -349,11 +376,13 @@ function buildKrGenreBlocks(){
     });
     const macro=selectable[0],tracks=groups.get(macro),share=totals.get(macro)/total;
     const needed=Math.round((current+4)*share-(placed.get(macro)||0));
-    const blockSize=Math.min(4,Math.max(1,needed),tracks.length);
+    const availableInRun=macro===previousMacro?Math.max(1,4-consecutiveMacroTracks):4;
+    const blockSize=Math.min(availableInRun,Math.max(1,needed),tracks.length);
     const selection=takePlaylistCamelotBlock(tracks,blockSize,previousTrack,macro),block=selection.block;
     ordered.push(...block);
     placed.set(macro,(placed.get(macro)||0)+block.length);
     remaining-=block.length;
+    consecutiveMacroTracks=macro===previousMacro?consecutiveMacroTracks+block.length:block.length;
     previousMacro=macro;
     previousTrack=block[block.length-1]||previousTrack;
     fallbacks+=selection.fallbacks;
@@ -374,7 +403,7 @@ function buildCamelotOrder(mode){const valid=playlistAllTracks.filter(camelotPar
 function renderCamelotDebug(items,mode){const compatible=items.filter(item=>item.compatible).length,fallback=items.length-compatible;$('#playlist-camelot-debug').innerHTML=`<details class="camelot-debug-details"><summary class="camelot-debug-head"><strong>Camelot ${mode==='strict'?'Strict':'Soft'}</strong><span>${compatible} compatibili - ${fallback} fallback - apri debug</span></summary>${items.map((item,index)=>`<div class="camelot-debug-row ${item.compatible?'ok':'fallback'}"><span>${index+1}</span><b>${escapeHtml(item.current.artist||'')} - ${escapeHtml(item.current.title||'')} <i>${escapeHtml(item.current.camelot||'-')}</i></b><span>-></span><b>${escapeHtml(item.chosen.artist||'')} - ${escapeHtml(item.chosen.title||'')} <i>${escapeHtml(item.chosen.camelot||'-')}</i></b><em>${escapeHtml(item.transition)}</em><small>${escapeHtml(item.reason)}${item.penalty?` - penalita ${item.penalty}`:''}</small></div>`).join('')}</details>`}
 
 renderTracks=function(){if($('#view-playlists').classList.contains('active'))renderPlaylistTable();else playlistBaseRenderTracks()};
-document.addEventListener('click',async event=>{if(event.target.closest('[data-view="library"]'))loadTracks(true,false);const sort=event.target.closest('#playlist-sort-header [data-sort]');if(sort){const field=sort.dataset.sort;playlistSort=field===playlistSort.field?{field,direction:playlistSort.direction*-1}:{field,direction:1};const {direction}=playlistSort;reorderPlaylist((a,b)=>{const left=playlistSortValue(a,field),right=playlistSortValue(b,field);return(typeof left==='string'?left.localeCompare(right,'it',{numeric:true,sensitivity:'base'}):left-right)*direction})}if(event.target.closest('#playlist-original')){playlistAllTracks=[...playlistOriginalTracks];$('#playlist-camelot-debug').innerHTML='';applyPlaylistFilters()}if(event.target.closest('#playlist-bpm-up'))reorderPlaylist((a,b)=>Number(a.bpm||999)-Number(b.bpm||999));if(event.target.closest('#playlist-bpm-down'))reorderPlaylist((a,b)=>Number(b.bpm||0)-Number(a.bpm||0));if(event.target.closest('#playlist-camelot-strict'))buildCamelotOrder('strict');if(event.target.closest('#playlist-camelot-soft'))buildCamelotOrder('soft');if(event.target.closest('#playlist-genre-bpm'))buildKrGenreBlocks();if(event.target.closest('#playlist-save'))await saveVisiblePlaylist()});
+document.addEventListener('click',async event=>{if(event.target.closest('[data-view="library"]'))loadTracks(true,false);const sort=event.target.closest('#playlist-sort-header [data-sort]');if(sort){const field=sort.dataset.sort;playlistSort=field===playlistSort.field?{field,direction:playlistSort.direction*-1}:{field,direction:1};const {direction}=playlistSort;reorderPlaylist((a,b)=>{const left=playlistSortValue(a,field),right=playlistSortValue(b,field);return(typeof left==='string'?left.localeCompare(right,'it',{numeric:true,sensitivity:'base'}):left-right)*direction})}if(event.target.closest('#playlist-original')){playlistAllTracks=[...playlistOriginalTracks];$('#playlist-camelot-debug').innerHTML='';applyPlaylistFilters()}if(event.target.closest('#playlist-bpm-up'))reorderPlaylist((a,b)=>Number(a.bpm||999)-Number(b.bpm||999));if(event.target.closest('#playlist-bpm-down'))reorderPlaylist((a,b)=>Number(b.bpm||0)-Number(a.bpm||0));if(event.target.closest('#playlist-camelot-strict'))buildCamelotOrder('strict');if(event.target.closest('#playlist-camelot-soft'))buildCamelotOrder('soft');if(event.target.closest('#playlist-genre-bpm'))await buildKrGenreBlocks();if(event.target.closest('#playlist-save'))await saveVisiblePlaylist()});
 $('#playlist-results').addEventListener('dragstart',event=>{const row=event.target.closest('[data-playlist-path]');if(!row)return;playlistDraggedPath=row.dataset.playlistPath;row.classList.add('dragging')});$('#playlist-results').addEventListener('dragend',event=>{event.target.closest('.track-row')?.classList.remove('dragging');playlistDraggedPath=''});$('#playlist-results').addEventListener('dragover',event=>{if(!playlistDraggedPath)return;event.preventDefault()});$('#playlist-results').addEventListener('drop',event=>{const target=event.target.closest('[data-playlist-path]');if(!target||!playlistDraggedPath||target.dataset.playlistPath===playlistDraggedPath)return;if(state.tracks.length!==playlistAllTracks.length){toast('Azzera i filtri prima del riordino manuale');return}const from=playlistAllTracks.findIndex(track=>track.file_path===playlistDraggedPath),to=playlistAllTracks.findIndex(track=>track.file_path===target.dataset.playlistPath);if(from<0||to<0)return;const [moved]=playlistAllTracks.splice(from,1);playlistAllTracks.splice(to,0,moved);applyPlaylistFilters()});
 $('#playlist-results').addEventListener('click',async event=>{const button=event.target.closest('.playlist-remove-row');if(!button)return;event.preventDefault();event.stopPropagation();const row=button.closest('[data-playlist-path]'),file=$('#playlist-select').value;if(!row||!file)return;const index=Number(row.dataset.playlistIndex),path=row.dataset.playlistPath;if(!window.confirm(`Rimuovere questa riga dalla playlist?\n\nIl file audio NON verra cancellato.\n\n${path}`))return;button.disabled=true;try{const result=await post('playlist-remove-track',{file,index,path});toast(`Riga rimossa dalla playlist - ${result.tracks} brani rimasti`);await openPlaylist(file)}catch(error){toast(error.message)}finally{button.disabled=false}});
 $('#playlist-select').addEventListener('change',event=>{if(event.target.value)openPlaylist(event.target.value)});$('#playlist-search-button').addEventListener('click',applyPlaylistFilters);$('#playlist-macro-genre')?.addEventListener('change',()=>{if(typeof updateFolderGenreOptions==='function')updateFolderGenreOptions('#playlist-macro-genre','#playlist-folder-genre');applyPlaylistFilters()});$('#playlist-folder-genre')?.addEventListener('change',applyPlaylistFilters);$('#playlist-search-library').addEventListener('click',()=>searchPlaylistQueryInLibrary($('#playlist-search').value));document.addEventListener('click',event=>{if(!event.target.closest('.playlist-search-library-action'))return;searchPlaylistQueryInLibrary($('#playlist-search').value)});document.addEventListener('click',event=>{const button=event.target.closest('.playlist-library-search,.playlist-library-dot');if(!button||button.classList.contains('spotify'))return;event.preventDefault();event.stopPropagation();const track=playlistAllTracks.find(item=>String(item.file_path)===String(button.dataset.path));searchPlaylistQueryInLibrary(button.dataset.query,track||null)});document.addEventListener('click',async event=>{const button=event.target.closest('.playlist-replace-missing');if(!button)return;event.preventDefault();event.stopPropagation();const track=playlistAllTracks.find(item=>String(item.file_path)===String(button.dataset.path));if(track)try{await replacePlaylistMissingFromLibrary(track)}catch(error){toast(error.message)}});$('#playlist-search').addEventListener('input',applyPlaylistFilters);$$('#playlist-filters input, #playlist-filters select').forEach(input=>input.addEventListener('change',applyPlaylistFilters));$('#playlist-clear').addEventListener('click',()=>{$$('#playlist-filters input').forEach(input=>input.value='');$('#playlist-macro-genre').value='';if(typeof updateFolderGenreOptions==='function')updateFolderGenreOptions('#playlist-macro-genre','#playlist-folder-genre');$('#playlist-folder-genre').value='';$('#playlist-key').value='';$('#playlist-genre').value='';if(window.refreshCompactMultiSelects)refreshCompactMultiSelects();applyPlaylistFilters()});

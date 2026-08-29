@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="assets/library-sort.css?v=2">
   <link rel="stylesheet" href="assets/formula-settings.css?v=3">
   <link rel="stylesheet" href="assets/playlists.css?v=14">
-  <link rel="stylesheet" href="assets/playlists-simple.css?v=4">
+  <link rel="stylesheet" href="assets/playlists-simple.css?v=5">
   <link rel="stylesheet" href="assets/playlist-integrator.css?v=7">
   <link rel="stylesheet" href="assets/quiz.css?v=6">
   <link rel="stylesheet" href="assets/audio-analysis.css?v=38">
@@ -173,11 +173,13 @@
     </section>
 
     <section class="view" id="view-requests">
+      <div class="button-row"><button type="button" class="button ghost" data-public-module="requests">Richieste: ...</button></div>
       <div class="request-header panel"><div><span class="kicker">RICHIESTE PUBBLICO · QUIZ</span><h2>Portale KR Live</h2><p>QR rigenerato automaticamente usando l’IP della rete attiva.</p><code>Rilevamento rete…</code></div><div id="qr-box" class="qr-placeholder"><img src="qr.php?target=public" alt="QR richieste e quiz"></div></div>
       <div id="request-mode-requests"><div class="status-tabs" id="request-tabs"><button class="active" data-status="all">Tutte</button><button data-status="new">Nuove</button><button data-status="approved">Approvate</button><button data-status="queued">Automix</button><button data-status="rejected">Rifiutate</button></div><div id="requests-list" class="requests-list"></div></div>
     </section>
 
     <section class="view" id="view-quiz">
+      <div class="button-row"><button type="button" class="button ghost" data-public-module="quiz">Quiz: ...</button></div>
       <div class="request-header panel"><div><span class="kicker">QUIZ LIVE</span><h2>Regia Quiz</h2><p>Domande, partecipanti, timer e classifica live.</p><div class="quiz-links"><a class="button ghost" id="quiz-public-link-top" target="_blank">Pagina mobile</a><a class="button ghost" id="quiz-screen-link-top" target="_blank">Schermo esterno</a></div></div><div class="qr-placeholder"><img src="qr.php?target=public" alt="QR richieste e quiz"></div></div>
       <div id="request-mode-quiz">
         <div class="quiz-group-toolbar panel"><label><span>GRUPPO / SERATA</span><select id="quiz-group-select"><option value="0">Senza gruppo / Archivio</option></select></label><label><span>NOME NUOVO GRUPPO</span><input id="quiz-group-name" maxlength="150" placeholder="Compleanno Giulia"></label><label><span>DATA</span><input id="quiz-group-date" type="date"></label><button type="button" class="button primary" id="quiz-group-create">Nuovo gruppo</button><button type="button" class="button ghost" id="quiz-group-duplicate">Duplica</button><button type="button" class="button accent" id="quiz-group-activate">Attiva serata</button><button type="button" class="button ghost" id="quiz-next-question">Prossima domanda</button><span id="quiz-group-status" class="badge">Archivio</span></div>
@@ -280,15 +282,15 @@
 <dialog id="bulk-tag-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="bulk-tag-editor"><span class="kicker">LISTA FILTRATA VISIBILE</span><h2>Tag globale</h2><p id="bulk-tag-count">0 brani selezionati</p><p class="form-note">Primo clic: <b class="bulk-add-label">verde, aggiungi</b> · secondo clic: <b class="bulk-remove-label">rosso, rimuovi</b> · terzo clic: annulla.</p><div id="bulk-tag-picker" class="tag-picker"></div><button type="button" class="button primary" id="apply-bulk-tags">Applica ai brani visibili</button></div></dialog>
 <dialog id="playlist-builder-dialog"><form method="dialog"><button class="dialog-close">×</button></form><div class="playlist-builder"><span class="kicker">COMPLETA PLAYLIST</span><h2>Aggiungi brani dalla libreria</h2><div class="playlist-builder-grid"><label>Numero brani<input id="builder-limit" type="number" min="1" max="100" value="10"></label><label>Macrogenere<select id="builder-macro-genre" multiple size="5"><option value="">Qualsiasi macro</option></select></label><label>Genere cartella<select id="builder-folder-genre" multiple size="5"><option value="">Qualsiasi cartella</option></select></label><label>Microgenere<select id="builder-genre" multiple size="6"><option value="">Qualsiasi microgenere</option></select></label><label>Tag<select id="builder-tag" multiple size="6"><option value="">Qualsiasi tag</option></select></label><label>BPM minimo<input id="builder-bpm-min" type="number"></label><label>BPM massimo<input id="builder-bpm-max" type="number"></label><label>Camelot compatibile<select id="builder-camelot" multiple size="5"><option value="">Qualsiasi Camelot</option></select></label><label>Energia minima<select id="builder-energy" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Ballabilità minima<select id="builder-dance" multiple size="5"><option value="">Qualsiasi</option><option>3</option><option>4</option><option>5</option></select></label><label>Popolarità minima<input id="builder-popularity" type="number" min="0" max="100"></label><label>Anno da<input id="builder-year-min" type="number"></label><label>Anno a<input id="builder-year-max" type="number"></label><label>Inserisci<select id="builder-position"><option value="end">In fondo</option></select></label></div><label class="builder-quality"><input id="builder-mp3-320" type="checkbox" checked> Solo MP3 320 kbps o superiore</label><div class="button-row"><button type="button" class="button accent" id="builder-search">Trova candidati</button><button type="button" class="button primary" id="builder-add" disabled>Aggiungi selezionati</button></div><div id="builder-results" class="builder-results"><div class="empty-state">Imposta i criteri e cerca.</div></div></div></dialog>
 <div id="app-toast" class="toast"></div>
-  <script src="assets/app.js?v=60"></script>
+  <script src="assets/app.js?v=61"></script>
   <script src="assets/library-quality.js?v=4"></script>
   <script src="assets/spotify-export-filter.js?v=7"></script>
   <script src="assets/library-sort.js?v=2"></script>
   <script src="assets/formula-settings.js?v=3"></script>
   <script src="assets/analysis.js?v=2"></script>
   <script src="assets/audio-analysis.js?v=105"></script>
-  <script src="assets/playlists.js?v=87"></script>
-  <script src="assets/playlist-integrator.js?v=72"></script>
+  <script src="assets/playlists.js?v=92"></script>
+  <script src="assets/playlist-integrator.js?v=73"></script>
   <script src="assets/automix-suggestions.js?v=19"></script>
   <script src="assets/spotify-features.js?v=71"></script>
   <script src="assets/bulk-tags.js?v=3"></script>
