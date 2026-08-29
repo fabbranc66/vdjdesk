@@ -61,7 +61,9 @@ async function setQuizTrack() {
 }
 
 function renderQuizLeaderboard(items) {
-  $('#quiz-leaderboard').innerHTML = items.length
+  const leaderboard = $('#quiz-leaderboard');
+  if (!leaderboard) return;
+  leaderboard.innerHTML = items.length
     ? items.map((item, index) => `<div class="quiz-ranking-row rank-${index+1}"><b>${index + 1}</b><strong>${escapeHtml(item.display_name)}</strong><span>${Number(item.points).toLocaleString('it-IT')} punti</span><small>${Number(item.correct_answers)} risposte corrette</small></div>`).join('')
     : '<div class="empty-state">Nessuna risposta.</div>';
 }
@@ -76,7 +78,9 @@ function renderQuizParticipants(items) {
       const isOnline = Number(item.online);
       const status = isPending ? 'Rientro da accettare' : isOnline ? 'Collegato' : 'Uscito / offline';
       const answer = item.selected_option ? `Risposta ${escapeHtml(item.selected_option)}` : 'Non ha risposto';
-      return `<div class="quiz-participant-row ${isPending ? 'pending' : ''}" data-participant-id="${item.id}"><i class="${isOnline ? 'online' : 'offline'}"></i><strong>${escapeHtml(item.display_name)}</strong><span class="badge ${item.selected_option ? '' : 'amber'}">${answer}</span><small>${escapeHtml(status)}</small><div class="quiz-participant-actions">${isPending ? '<button type="button" class="button primary quiz-participant-action" data-action="accept">Accetta</button>' : ''}<button type="button" class="button ghost quiz-participant-action" data-action="disconnect">Scollega</button><button type="button" class="button ghost quiz-participant-action" data-action="remove">Rimuovi</button><button type="button" class="button ghost danger quiz-participant-action" data-action="delete">Cancella</button></div></div>`;
+      const betLabel = item.bet_mode ? `${item.bet_mode === 'all_in' ? 'All-in' : 'Metà'}: ${Number(item.bet_points).toLocaleString('it-IT')} punti` : 'Nessuna puntata';
+      const betIcon = item.bet_mode ? '◆' : '○';
+      return `<div class="quiz-participant-row ${isPending ? 'pending' : ''}" data-participant-id="${item.id}"><i class="${isOnline ? 'online' : 'offline'}"></i><strong>${escapeHtml(item.display_name)}</strong><b class="quiz-participant-score">${Number(item.total_points||0).toLocaleString('it-IT')} pt</b><span class="quiz-bet-icon ${item.bet_mode ? 'placed' : ''}" title="${escapeHtml(betLabel)}" aria-label="${escapeHtml(betLabel)}">${betIcon}</span><span class="badge ${item.selected_option ? '' : 'amber'}">${answer}</span><small>${escapeHtml(status)}</small><div class="quiz-participant-actions">${isPending ? '<button type="button" class="button primary quiz-participant-action" data-action="accept">Accetta</button>' : ''}<button type="button" class="button ghost quiz-participant-action" data-action="disconnect">Scollega</button><button type="button" class="button ghost quiz-participant-action" data-action="remove">Rimuovi</button><button type="button" class="button ghost danger quiz-participant-action" data-action="delete">Cancella</button></div></div>`;
     }).join('')
     : '<div class="empty-state">Nessun partecipante.</div>';
 }

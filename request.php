@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#080b10">
   <title>KR Live</title>
   <link rel="stylesheet" href="assets/app.css?v=17">
-  <link rel="stylesheet" href="assets/quiz-public.css?v=6">
+  <link rel="stylesheet" href="assets/quiz-public.css?v=7">
 </head>
 <body class="public-page">
 <main class="public-shell">
@@ -63,6 +63,6 @@
   <p class="privacy-note">Funziona solo sulla rete locale dell&rsquo;evento.</p>
 </main>
 <script src="assets/request.js?v=9"></script>
-<script src="assets/quiz-public.js?v=15"></script>
+<script src="assets/quiz-public.js?v=16"></script>
 </body>
 </html>
