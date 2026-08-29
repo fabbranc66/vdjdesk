@@ -16,12 +16,14 @@ function syncQuizGroupSelection() {
   localStorage.setItem('krdesk_quiz_group_id',String(quizSelectedGroupId));
   const group=quizGroups.find(item=>item.id===quizSelectedGroupId);
   const status=$('#quiz-group-status');
-  if(status){status.textContent=group?(group.status==='active'?'Serata attiva':'Pianificata'):'Archivio';status.classList.toggle('blue',Boolean(group&&group.status!=='active'));}
+  if(status){status.textContent=group?`${group.status==='active'?'Serata attiva':'Pianificata'} · ${group.image_path?'Immagine OK':'Nessuna immagine'}`:'Archivio';status.classList.toggle('blue',Boolean(group&&group.status!=='active'));}
   if($('#quiz-group-activate')){
     $('#quiz-group-activate').disabled=!group;
     $('#quiz-group-activate').textContent=group?.status==='active'?'Riavvia serata':'Avvia serata';
   }
   if($('#quiz-group-duplicate'))$('#quiz-group-duplicate').disabled=!group;
+  if($('#quiz-group-image')){$('#quiz-group-image').disabled=!group;$('#quiz-group-image').title=group?.image_path||'Nessuna immagine associata';}
+  if($('#quiz-group-image-remove'))$('#quiz-group-image-remove').disabled=!group?.image_path;
 }
 
 function renderQuizGroups(data) {
@@ -237,6 +239,18 @@ $('#quiz-group-create').addEventListener('click',async event=>{
   const button=event.currentTarget,name=$('#quiz-group-name').value.trim(),eventDate=$('#quiz-group-date').value;
   if(!name){toast('Inserisci il nome del gruppo quiz');return}
   button.disabled=true;try{const result=await post('quiz-group-create',{name,event_date:eventDate});quizSelectedGroupId=Number(result.id);quizSelectedHistoryId=0;$('#quiz-group-name').value='';await loadQuizControl();toast('Gruppo quiz creato')}catch(error){toast(error.message)}finally{button.disabled=false}
+});
+
+$('#quiz-group-image').addEventListener('change',async event=>{
+  const file=event.target.files?.[0];if(!file||quizSelectedGroupId<1)return;
+  if(file.size>5*1024*1024){toast('Immagine superiore a 5 MB');event.target.value='';return}
+  const imageData=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=()=>reject(new Error('Lettura immagine non riuscita'));reader.readAsDataURL(file)});
+  event.target.disabled=true;try{await post('quiz-group-image',{id:quizSelectedGroupId,image_data:imageData});await loadQuizControl();toast('Immagine associata alla serata')}catch(error){toast(error.message)}finally{event.target.value='';event.target.disabled=false}
+});
+
+$('#quiz-group-image-remove').addEventListener('click',async event=>{
+  if(quizSelectedGroupId<1)return;event.currentTarget.disabled=true;
+  try{await post('quiz-group-image',{id:quizSelectedGroupId,image_data:''});await loadQuizControl();toast('Immagine rimossa dalla serata')}catch(error){toast(error.message)}
 });
 
 $('#quiz-group-activate').addEventListener('click',async event=>{

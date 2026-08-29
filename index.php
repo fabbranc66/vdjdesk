@@ -13,13 +13,13 @@
   <link rel="stylesheet" href="assets/playlists.css?v=14">
   <link rel="stylesheet" href="assets/playlists-simple.css?v=5">
   <link rel="stylesheet" href="assets/playlist-integrator.css?v=7">
-<link rel="stylesheet" href="assets/quiz.css?v=11">
+<link rel="stylesheet" href="assets/quiz.css?v=13">
   <link rel="stylesheet" href="assets/audio-analysis.css?v=38">
 </head>
 <body>
 <div class="app-shell">
   <aside class="sidebar">
-    <a class="brand" href="#dashboard"><span class="brand-mark">KR</span><span><b>DJ Desk</b><small>LOCAL PERFORMANCE TOOL</small></span></a>
+    <a class="brand" href="#dashboard"><img class="brand-mark" src="assets/images/kr-music-logo-transparent.png" alt="KR Music"><span><b>DJ Desk</b><small>LOCAL PERFORMANCE TOOL</small></span></a>
     <div class="desk-mode-switch" role="group" aria-label="Modalita KR Desk">
       <button type="button" class="active" data-desk-mode="regia">Regia</button>
       <button type="button" data-desk-mode="studio">Studio</button>
@@ -182,7 +182,7 @@
       <div class="button-row"><button type="button" class="button ghost" data-public-module="quiz">Quiz: ...</button></div>
       <div class="request-header panel"><div><span class="kicker">QUIZ LIVE</span><h2>Regia Quiz</h2><p>Domande, partecipanti, timer e classifica live.</p><div class="quiz-links"><a class="button ghost" id="quiz-public-link-top" target="_blank">Pagina mobile</a><a class="button ghost" id="quiz-screen-link-top" target="_blank">Schermo esterno</a></div></div><div class="qr-placeholder"><img src="qr.php?target=public" alt="QR richieste e quiz"></div></div>
       <div id="request-mode-quiz">
-        <div class="quiz-group-toolbar panel"><label><span>GRUPPO / SERATA</span><select id="quiz-group-select"><option value="0">Senza gruppo / Archivio</option></select></label><label><span>NOME NUOVO GRUPPO</span><input id="quiz-group-name" maxlength="150" placeholder="Compleanno Giulia"></label><label><span>DATA</span><input id="quiz-group-date" type="date"></label><button type="button" class="button primary" id="quiz-group-create">Nuovo gruppo</button><button type="button" class="button ghost" id="quiz-group-duplicate">Duplica</button><button type="button" class="button accent" id="quiz-group-activate">Attiva serata</button><button type="button" class="button ghost" id="quiz-next-question">Prossima domanda</button><span id="quiz-group-status" class="badge">Archivio</span></div>
+        <div class="quiz-group-toolbar panel"><label><span>GRUPPO / SERATA</span><select id="quiz-group-select"><option value="0">Senza gruppo / Archivio</option></select></label><label><span>NOME NUOVO GRUPPO</span><input id="quiz-group-name" maxlength="150" placeholder="Compleanno Giulia"></label><label><span>DATA</span><input id="quiz-group-date" type="date"></label><label><span>IMMAGINE SERATA</span><input id="quiz-group-image" type="file" accept="image/png,image/jpeg,image/webp"></label><button type="button" class="button ghost" id="quiz-group-image-remove">Rimuovi immagine</button><button type="button" class="button primary" id="quiz-group-create">Nuovo gruppo</button><button type="button" class="button ghost" id="quiz-group-duplicate">Duplica</button><button type="button" class="button accent" id="quiz-group-activate">Attiva serata</button><button type="button" class="button ghost" id="quiz-next-question">Prossima domanda</button><span id="quiz-group-status" class="badge">Archivio</span></div>
         <div class="quiz-control-grid">
           <article class="panel quiz-editor"><span class="kicker">REGIA QUIZ</span><h2>Prepara la prossima domanda</h2><div id="quiz-live-track" class="quiz-live-track">Brano ON AIR non disponibile</div><form id="quiz-create-form"><input type="hidden" name="track_id" id="quiz-track-id"><input type="hidden" name="group_id" id="quiz-question-group-id" value="0"><label>Domanda<input name="question" required maxlength="500" placeholder="Quale curiosità è legata a questo brano?"></label><div class="quiz-option-editor"><label><b>A</b><input name="option_a" required></label><label><b>B</b><input name="option_b" required></label><label><b>C</b><input name="option_c" required></label><label><b>D</b><input name="option_d" required></label></div><div class="quiz-editor-footer"><label>Risposta corretta<select name="correct_option"><option>A</option><option>B</option><option>C</option><option>D</option></select></label><label>Timer<select name="duration_seconds"><option>10</option><option>15</option><option selected>20</option><option>30</option><option>45</option><option>60</option></select></label><button class="button primary" type="button" id="quiz-codex-suggest">✦ Suggerisci domanda</button><button class="button accent" type="submit">Salva domanda</button></div><a id="quiz-suggestion-source" class="quiz-suggestion-source hidden" target="_blank" rel="noopener">Fonte verificata ↗</a></form></article>
           <article class="panel quiz-live-control"><div class="quiz-live-head"><div><span class="kicker">STATO LIVE</span><h2 id="quiz-control-status">In attesa</h2></div><strong id="quiz-control-timer">--</strong></div><div id="quiz-control-question" class="empty-state">Nessuna domanda preparata.</div><div class="button-row"><button type="button" id="quiz-launch" class="button primary" disabled>Lancia domanda</button><button type="button" id="quiz-close" class="button ghost" disabled>Chiudi risposte</button></div><div class="quiz-links"><a id="quiz-public-link" target="_blank">Pagina mobile ↗</a><a id="quiz-screen-link" target="_blank">Schermo esterno ↗</a></div></article>
@@ -296,5 +296,5 @@
   <script src="assets/bulk-tags.js?v=3"></script>
   <script src="assets/vdj-years.js?v=5"></script>
   <script src="assets/playlist-builder.js?v=21"></script>
-<script src="assets/quiz-control.js?v=26"></script>
+<script src="assets/quiz-control.js?v=28"></script>
 </body></html>

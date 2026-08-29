@@ -506,9 +506,37 @@ try {
         $statement=$pdo->prepare('DELETE FROM requests WHERE id=?');$statement->execute([$requestId]);
         jsonResponse(['ok'=>true,'deleted'=>$statement->rowCount()]);
     }
-    if ($action === 'quiz-state') jsonResponse($quiz->state((string)($_GET['token']??''),(bool)($_GET['control']??false)));
+    if ($action === 'quiz-state') {
+        $control=(bool)($_GET['control']??false);
+        if(!$control&&setting('public_quiz_enabled','1')!=='1')jsonResponse(['error'=>'Il quiz è temporaneamente disabilitato.'],403);
+        jsonResponse($quiz->state((string)($_GET['token']??''),$control));
+    }
     if ($action === 'quiz-groups') jsonResponse($quiz->groups());
     if ($action === 'quiz-group-create' && $method === 'POST') jsonResponse($quiz->createGroup((string)($data['name']??''),(string)($data['event_date']??''),(string)($data['description']??'')),201);
+    if ($action === 'quiz-group-image' && $method === 'POST') {
+        if(!appUsesLocalFiles()){
+            $expectedToken=(string)(sessionTracksUploadConfig()['token']??'');$receivedToken=(string)($data['control_token']??'');
+            if($expectedToken===''||!hash_equals($expectedToken,$receivedToken))jsonResponse(['error'=>'Controllo Regia non autorizzato.'],403);
+        }
+        $groupId=(int)($data['id']??0);$imageData=(string)($data['image_data']??'');
+        $groupStatement=$pdo->prepare('SELECT image_path FROM quiz_groups WHERE id=?');$groupStatement->execute([$groupId]);$oldPath=$groupStatement->fetchColumn();
+        if($oldPath===false)throw new RuntimeException('Gruppo quiz non trovato.');
+        if($imageData===''){
+            $pdo->prepare("UPDATE quiz_groups SET image_path='' WHERE id=?")->execute([$groupId]);
+            if(is_string($oldPath)&&str_starts_with($oldPath,'assets/images/quiz-groups/')&&is_file(APP_ROOT.'/'.$oldPath))unlink(APP_ROOT.'/'.$oldPath);
+            jsonResponse(['ok'=>true,'id'=>$groupId,'image_path'=>'']);
+        }
+        if(!preg_match('~^data:image/(png|jpeg|webp);base64,(.+)$~s',$imageData,$match))throw new RuntimeException('Immagine non valida. Usa PNG, JPG o WEBP.');
+        $binary=base64_decode($match[2],true);if($binary===false||strlen($binary)>5*1024*1024)throw new RuntimeException('Immagine non valida o superiore a 5 MB.');
+        $mime=(new finfo(FILEINFO_MIME_TYPE))->buffer($binary);$extensions=['image/png'=>'png','image/jpeg'=>'jpg','image/webp'=>'webp'];
+        if(!isset($extensions[$mime]))throw new RuntimeException('Formato immagine non supportato.');
+        $relativePath='assets/images/quiz-groups/group-'.$groupId.'.'.$extensions[$mime];$directory=APP_ROOT.'/assets/images/quiz-groups';
+        if(!is_dir($directory)&&!mkdir($directory,0775,true)&&!is_dir($directory))throw new RuntimeException('Cartella immagini quiz non disponibile.');
+        if(file_put_contents(APP_ROOT.'/'.$relativePath,$binary)===false)throw new RuntimeException('Salvataggio immagine non riuscito.');
+        if(is_string($oldPath)&&$oldPath!==$relativePath&&str_starts_with($oldPath,'assets/images/quiz-groups/')&&is_file(APP_ROOT.'/'.$oldPath))unlink(APP_ROOT.'/'.$oldPath);
+        $pdo->prepare('UPDATE quiz_groups SET image_path=? WHERE id=?')->execute([$relativePath,$groupId]);
+        jsonResponse(['ok'=>true,'id'=>$groupId,'image_path'=>$relativePath]);
+    }
     if ($action === 'quiz-group-activate' && $method === 'POST') jsonResponse($quiz->activateGroup((int)($data['id']??0)));
     if ($action === 'quiz-group-duplicate' && $method === 'POST') jsonResponse($quiz->duplicateGroup((int)($data['id']??0),(string)($data['name']??''),(string)($data['event_date']??'')),201);
     if ($action === 'quiz-group-reorder' && $method === 'POST') jsonResponse($quiz->reorderGroup((int)($data['group_id']??0),(array)($data['ids']??[])));
@@ -809,6 +837,7 @@ function shouldProxyToHosting(string $action): bool
         'quiz-state',
         'quiz-groups',
         'quiz-group-create',
+        'quiz-group-image',
         'quiz-group-activate',
         'quiz-group-duplicate',
         'quiz-group-reorder',
@@ -932,6 +961,7 @@ function apiRegiaHostingActions(): array
         'quiz-state',
         'quiz-groups',
         'quiz-group-create',
+        'quiz-group-image',
         'quiz-group-activate',
         'quiz-group-duplicate',
         'quiz-group-reorder',
@@ -1116,7 +1146,7 @@ function remoteApiRequest(string $action, string $method = 'GET', array $data = 
     $headers = ['Accept: application/json'];
     $body = null;
     if ($method !== 'GET') {
-        if ($action === 'public-modules-update') $data['control_token'] = (string)(sessionTracksUploadConfig()['token'] ?? '');
+        if (in_array($action,['public-modules-update','quiz-group-image'],true)) $data['control_token'] = (string)(sessionTracksUploadConfig()['token'] ?? '');
         $body = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         $headers[] = 'Content-Type: application/json';
     }

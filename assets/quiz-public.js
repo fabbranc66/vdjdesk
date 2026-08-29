@@ -6,7 +6,7 @@ if(!/^[a-f0-9-]{36}$/i.test(quizLocalIdentifier)){quizLocalIdentifier=crypto.ran
 let quizPlayerState=null;
 let quizPublicClockOffset=0;
 let quizLastOpenQuestionId=0;
-let publicModules={requests_enabled:true,quiz_enabled:true};
+let publicModules={requests_enabled:false,quiz_enabled:false};
 
 function activatePublicMode(mode){
   if(mode==='requests'&&!publicModules.requests_enabled)mode=publicModules.quiz_enabled?'quiz':'disabled';
@@ -61,7 +61,7 @@ function renderPublicQuiz(data){
     return;
   }
   const question=data.question;
-  if(['betting','open'].includes(question?.status)&&Number(question.id)!==quizLastOpenQuestionId){
+  if(publicModules.quiz_enabled&&['betting','open'].includes(question?.status)&&Number(question.id)!==quizLastOpenQuestionId){
     quizLastOpenQuestionId=Number(question.id);
     activatePublicMode('quiz');
   }
@@ -103,15 +103,15 @@ $('#quiz-player-content').addEventListener('click',async event=>{
   refreshPublicQuiz();
 });
 
-async function refreshPublicQuiz(){try{const response=await fetch(`api.php?action=quiz-state&token=${encodeURIComponent(quizToken)}`,{cache:'no-store'});renderPublicQuiz(await response.json())}catch(error){}}
+async function refreshPublicQuiz(){if(!publicModules.quiz_enabled)return;try{const response=await fetch(`api.php?action=quiz-state&token=${encodeURIComponent(quizToken)}`,{cache:'no-store'});if(!response.ok)return;renderPublicQuiz(await response.json())}catch(error){}}
 async function quizHeartbeat(){if(!quizToken)return;try{await fetch('api.php?action=quiz-heartbeat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:quizToken}),keepalive:true})}catch(error){}}
 
 window.addEventListener('beforeunload',event=>{const question=quizPlayerState?.question;if(question?.status==='open'&&!question.answered){event.preventDefault();event.returnValue=''}});
 window.addEventListener('pagehide',()=>{if(quizToken)navigator.sendBeacon('api.php?action=quiz-leave',new Blob([JSON.stringify({token:quizToken})],{type:'application/json'}))});
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')quizHeartbeat()});
-loadPublicModules().then(()=>{if(quizToken)activatePublicMode('quiz')});
-refreshPublicQuiz();
+loadPublicModules().then(()=>{if(quizToken&&publicModules.quiz_enabled)activatePublicMode('quiz');refreshPublicQuiz()});
 quizHeartbeat();
 setInterval(refreshPublicQuiz,700);
 setInterval(quizHeartbeat,3000);
+setInterval(loadPublicModules,2000);
 setInterval(()=>{const question=quizPlayerState?.question;const target=question?.status==='revealed'?question.revealed_until_ms:question?.closes_at_ms;if(!question||!['open','revealed'].includes(question.status)||!target)return;$('#quiz-player-timer').textContent=Math.max(0,Math.ceil((Number(target)-(Date.now()+quizPublicClockOffset))/1000))},100);

@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS quiz_participants (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 CREATE TABLE IF NOT EXISTS quiz_groups (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(150) NOT NULL,
-    event_date DATE NULL, description VARCHAR(500) NOT NULL DEFAULT '',
+    event_date DATE NULL, description VARCHAR(500) NOT NULL DEFAULT '', image_path VARCHAR(255) NOT NULL DEFAULT '',
     status VARCHAR(20) NOT NULL DEFAULT 'planned', created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_quiz_groups_status_date(status,event_date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

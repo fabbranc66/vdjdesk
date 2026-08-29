@@ -6,12 +6,12 @@
   <meta name="theme-color" content="#080b10">
   <title>KR Live</title>
   <link rel="stylesheet" href="assets/app.css?v=17">
-  <link rel="stylesheet" href="assets/quiz-public.css?v=7">
+  <link rel="stylesheet" href="assets/quiz-public.css?v=8">
 </head>
 <body class="public-page">
 <main class="public-shell">
   <div class="public-brand">
-    <span class="brand-mark">KR</span>
+    <img class="brand-mark" src="assets/images/kr-music-logo-transparent.png" alt="KR Music">
     <span><b>KR Live</b><small>RICHIESTE &middot; QUIZ</small></span>
   </div>
   <nav class="public-mode-tabs">
@@ -63,6 +63,6 @@
   <p class="privacy-note">Funziona solo sulla rete locale dell&rsquo;evento.</p>
 </main>
 <script src="assets/request.js?v=9"></script>
-<script src="assets/quiz-public.js?v=16"></script>
+<script src="assets/quiz-public.js?v=17"></script>
 </body>
 </html>

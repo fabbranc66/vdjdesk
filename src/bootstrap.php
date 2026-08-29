@@ -276,6 +276,8 @@ function migrateMariaDb(PDO $pdo): void
     if(!in_array('status',$participantColumns,true))$pdo->exec("ALTER TABLE quiz_participants ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT 'active'");
     if(!in_array('rejoin_requested_at',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN rejoin_requested_at DATETIME NULL');
     if(!in_array('local_identifier',$participantColumns,true))$pdo->exec('ALTER TABLE quiz_participants ADD COLUMN local_identifier CHAR(36) NULL UNIQUE AFTER public_token');
+    $groupColumns=array_column($pdo->query('SHOW COLUMNS FROM quiz_groups')->fetchAll(),'Field');
+    if(!in_array('image_path',$groupColumns,true))$pdo->exec("ALTER TABLE quiz_groups ADD COLUMN image_path VARCHAR(255) NOT NULL DEFAULT '' AFTER description");
     $pdo->exec("CREATE TABLE IF NOT EXISTS quiz_bets (
         id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, question_id INT UNSIGNED NOT NULL,
         participant_id INT UNSIGNED NOT NULL, mode VARCHAR(20) NOT NULL,
