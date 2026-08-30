@@ -2,10 +2,15 @@ const $=selector=>document.querySelector(selector);
 const escapeHtml=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
 const wheelSegments=['100','500','200','JOLLY','300','700','150','RADDOPPIA','400','250','600','PASSA','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
 let wheelSpinToken=0,wheelRunning=false,wheelDecelerating=false,wheelAngle=0,wheelSpeed=0,wheelFrame=0,wheelLastTime=0;
-let currentGameId=0,wheelPointerPressed=false,wheelStartRequest=null;
+let currentGameId=0,currentWheelSpinning=0,wheelPointerPressed=false,wheelStartRequest=null;
 let screenBoardPuzzleId=0,screenBoardLetters=null;
 let screenBoardSignature='';
-let wheelAudioContext=null,wheelAudioBuffer=null,wheelAudioSector=-1,wheelAudioAt=0;
+let screenSoundEventId=null;
+let wheelAudioContext=null,wheelAudioBuffer=null,wheelAudioCarry=0;
+let correctSoundBuffer=null,correctSoundRequest=null;
+let wrongSoundBuffer=null,wrongSoundRequest=null;
+let noLetterSoundBuffer=null,noLetterSoundRequest=null;
+let noConsonantsSoundBuffer=null,noConsonantsSoundRequest=null;
 let letterRevealTimers=[];
 
 function unlockWheelAudio(){
@@ -16,26 +21,75 @@ function unlockWheelAudio(){
     wheelAudioBuffer=wheelAudioContext.createBuffer(1,Math.ceil(wheelAudioContext.sampleRate*.035),wheelAudioContext.sampleRate);
     const samples=wheelAudioBuffer.getChannelData(0);
     for(let index=0;index<samples.length;index++)samples[index]=(Math.random()*2-1)*Math.pow(1-index/samples.length,3);
+    wheelAudioContext.onstatechange=updateAudioStatus;
   }
-  if(wheelAudioContext.state==='suspended')wheelAudioContext.resume().catch(()=>{});
+  if(wheelAudioContext.state==='suspended')wheelAudioContext.resume().then(updateAudioStatus).catch(()=>{});
+  loadCorrectSound().catch(()=>{});
+  loadWrongSound().catch(()=>{});
+  loadNoLetterSound().catch(()=>{});
+  loadNoConsonantsSound().catch(()=>{});
+  updateAudioStatus();
+}
+
+function loadCorrectSound(){
+  if(correctSoundBuffer)return Promise.resolve(correctSoundBuffer);
+  if(!wheelAudioContext)return Promise.reject(new Error('Audio non inizializzato'));
+  if(!correctSoundRequest)correctSoundRequest=fetch('assets/audio/correct-answer-reward.mp3?v=1')
+    .then(response=>{if(!response.ok)throw new Error('Effetto audio non disponibile');return response.arrayBuffer()})
+    .then(buffer=>wheelAudioContext.decodeAudioData(buffer))
+    .then(buffer=>correctSoundBuffer=buffer)
+    .catch(error=>{correctSoundRequest=null;throw error});
+  return correctSoundRequest;
+}
+
+function loadWrongSound(){
+  if(wrongSoundBuffer)return Promise.resolve(wrongSoundBuffer);
+  if(!wheelAudioContext)return Promise.reject(new Error('Audio non inizializzato'));
+  if(!wrongSoundRequest)wrongSoundRequest=fetch('assets/audio/wrong-answer-trombone-preview.mp3?v=2')
+    .then(response=>{if(!response.ok)throw new Error('Effetto audio non disponibile');return response.arrayBuffer()})
+    .then(buffer=>wheelAudioContext.decodeAudioData(buffer))
+    .then(buffer=>wrongSoundBuffer=buffer)
+    .catch(error=>{wrongSoundRequest=null;throw error});
+  return wrongSoundRequest;
+}
+
+function loadNoLetterSound(){
+  if(noLetterSoundBuffer)return Promise.resolve(noLetterSoundBuffer);
+  if(!wheelAudioContext)return Promise.reject(new Error('Audio non inizializzato'));
+  if(!noLetterSoundRequest)noLetterSoundRequest=fetch('assets/audio/no-letter-sad-trombone.mp3?v=1')
+    .then(response=>{if(!response.ok)throw new Error('Effetto audio non disponibile');return response.arrayBuffer()})
+    .then(buffer=>wheelAudioContext.decodeAudioData(buffer))
+    .then(buffer=>noLetterSoundBuffer=buffer)
+    .catch(error=>{noLetterSoundRequest=null;throw error});
+  return noLetterSoundRequest;
+}
+
+function loadNoConsonantsSound(){
+  if(noConsonantsSoundBuffer)return Promise.resolve(noConsonantsSoundBuffer);
+  if(!wheelAudioContext)return Promise.reject(new Error('Audio non inizializzato'));
+  if(!noConsonantsSoundRequest)noConsonantsSoundRequest=fetch('assets/audio/no-consonants-sad-trombone.mp3?v=1')
+    .then(response=>{if(!response.ok)throw new Error('Effetto audio non disponibile');return response.arrayBuffer()})
+    .then(buffer=>wheelAudioContext.decodeAudioData(buffer))
+    .then(buffer=>noConsonantsSoundBuffer=buffer)
+    .catch(error=>{noConsonantsSoundRequest=null;throw error});
+  return noConsonantsSoundRequest;
+}
+
+function updateAudioStatus(){
+  const status=$('#reel-screen-status');
+  if(!status)return;
+  const enabled=wheelAudioContext?.state==='running';
+  status.dataset.audio=enabled?'on':'off';
+  status.title=enabled?'Effetti audio attivi':'Clicca per attivare gli effetti audio';
 }
 
 function effectsVolume(){
   return Math.max(0,Math.min(1,Number(localStorage.getItem('kr_chill_reel_sfx_volume')??70)/100));
 }
 
-function updateWheelAudio(angle,speed){
-  unlockWheelAudio();
-  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
-  const sector=Math.floor((((angle%360)+360)%360)/(360/wheelSegments.length));
-  if(sector===wheelAudioSector)return;
-  wheelAudioSector=sector;
-  const now=performance.now();
-  if(now-wheelAudioAt<14)return;
-  wheelAudioAt=now;
+function playWheelClack(speed,start){
   const volume=effectsVolume();
   if(volume<=0)return;
-  const start=wheelAudioContext.currentTime;
   const clack=wheelAudioContext.createBufferSource();
   const filter=wheelAudioContext.createBiquadFilter();
   const clackGain=wheelAudioContext.createGain();
@@ -44,7 +98,7 @@ function updateWheelAudio(angle,speed){
   filter.type='bandpass';
   filter.frequency.value=820+Math.min(260,Math.max(0,speed)*.22);
   filter.Q.value=.75;
-  clackGain.gain.setValueAtTime(.13*volume,start);
+  clackGain.gain.setValueAtTime(.26*volume,start);
   clackGain.gain.exponentialRampToValueAtTime(.0001,start+.032);
   clack.connect(filter).connect(clackGain).connect(wheelAudioContext.destination);
   clack.start(start);
@@ -53,31 +107,24 @@ function updateWheelAudio(angle,speed){
   impact.type='sine';
   impact.frequency.setValueAtTime(185+Math.min(45,Math.max(0,speed)*.045),start);
   impact.frequency.exponentialRampToValueAtTime(125,start+.026);
-  impactGain.gain.setValueAtTime(.045*volume,start);
+  impactGain.gain.setValueAtTime(.09*volume,start);
   impactGain.gain.exponentialRampToValueAtTime(.0001,start+.028);
   impact.connect(impactGain).connect(wheelAudioContext.destination);
   impact.start(start);
   impact.stop(start+.03);
 }
 
-function playLetterRevealSound(){
+function updateWheelAudio(deltaDegrees,speed){
   unlockWheelAudio();
   if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
-  const volume=effectsVolume();
-  if(volume<=0)return;
+  const step=360/wheelSegments.length;
+  wheelAudioCarry+=Math.abs(deltaDegrees);
+  const clicks=Math.floor(wheelAudioCarry/step);
+  if(!clicks)return;
+  wheelAudioCarry-=clicks*step;
+  const interval=step/Math.max(90,speed);
   const start=wheelAudioContext.currentTime;
-  [0,1].forEach(harmonic=>{
-    const oscillator=wheelAudioContext.createOscillator();
-    const gain=wheelAudioContext.createGain();
-    oscillator.type='sine';
-    oscillator.frequency.setValueAtTime(harmonic?1040:520,start);
-    oscillator.frequency.exponentialRampToValueAtTime(harmonic?880:440,start+.16);
-    gain.gain.setValueAtTime((harmonic?.025:.075)*volume,start);
-    gain.gain.exponentialRampToValueAtTime(.0001,start+(harmonic?.16:.24));
-    oscillator.connect(gain).connect(wheelAudioContext.destination);
-    oscillator.start(start);
-    oscillator.stop(start+(harmonic?.17:.25));
-  });
+  for(let index=0;index<clicks;index++)playWheelClack(speed,start+index*interval);
 }
 
 function playWheelResultSound(){
@@ -91,7 +138,7 @@ function playWheelResultSound(){
     const gain=wheelAudioContext.createGain();
     oscillator.type='sine';
     oscillator.frequency.setValueAtTime(frequency,start+index*.035);
-    gain.gain.setValueAtTime((index?.045:.085)*volume,start+index*.035);
+    gain.gain.setValueAtTime((index?.09:.17)*volume,start+index*.035);
     gain.gain.exponentialRampToValueAtTime(.0001,start+.75+index*.08);
     oscillator.connect(gain).connect(wheelAudioContext.destination);
     oscillator.start(start+index*.035);
@@ -99,10 +146,66 @@ function playWheelResultSound(){
   });
 }
 
+function playCorrectSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  if(!correctSoundBuffer){loadCorrectSound().then(playCorrectSound).catch(()=>{});return}
+  const source=wheelAudioContext.createBufferSource();
+  const gain=wheelAudioContext.createGain();
+  source.buffer=correctSoundBuffer;
+  gain.gain.value=.9*volume;
+  source.connect(gain).connect(wheelAudioContext.destination);
+  source.start();
+}
+
+function playWrongSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  if(!wrongSoundBuffer){loadWrongSound().then(playWrongSound).catch(()=>{});return}
+  const source=wheelAudioContext.createBufferSource();
+  const gain=wheelAudioContext.createGain();
+  source.buffer=wrongSoundBuffer;
+  gain.gain.value=.9*volume;
+  source.connect(gain).connect(wheelAudioContext.destination);
+  source.start();
+}
+
+function playNoLetterSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  if(!noLetterSoundBuffer){loadNoLetterSound().then(playNoLetterSound).catch(()=>{});return}
+  const source=wheelAudioContext.createBufferSource();
+  const gain=wheelAudioContext.createGain();
+  source.buffer=noLetterSoundBuffer;
+  gain.gain.value=.9*volume;
+  source.connect(gain).connect(wheelAudioContext.destination);
+  source.start();
+}
+
+function playNoConsonantsSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  if(!noConsonantsSoundBuffer){loadNoConsonantsSound().then(playNoConsonantsSound).catch(()=>{});return}
+  const source=wheelAudioContext.createBufferSource();
+  const gain=wheelAudioContext.createGain();
+  source.buffer=noConsonantsSoundBuffer;
+  gain.gain.value=.9*volume;
+  source.connect(gain).connect(wheelAudioContext.destination);
+  source.start();
+}
+
 function scheduleLetterRevealSounds(count){
   letterRevealTimers.forEach(clearTimeout);
   letterRevealTimers=[];
-  for(let index=0;index<count;index++)letterRevealTimers.push(setTimeout(playLetterRevealSound,index*1000+400));
+  for(let index=0;index<count;index++)letterRevealTimers.push(setTimeout(playWheelResultSound,index*1000+400));
 }
 
 function boardHtml(solution,letters,previousLetters){
@@ -168,10 +271,11 @@ function wheelTick(time){
   if(!wheelRunning)return;
   const elapsed=Math.min(.05,(time-wheelLastTime)/1000||0);
   wheelLastTime=time;
-  wheelSpeed=Math.min(500,wheelSpeed+1050*elapsed);
-  wheelAngle=(wheelAngle+wheelSpeed*elapsed)%360;
+  wheelSpeed=Math.min(250,wheelSpeed+1050*elapsed);
+  const rotation=wheelSpeed*elapsed;
+  wheelAngle=(wheelAngle+rotation)%360;
   $('#reel-screen-wheel').style.transform=`rotate(${wheelAngle}deg)`;
-  updateWheelAudio(wheelAngle,wheelSpeed);
+  updateWheelAudio(rotation,wheelSpeed);
   wheelFrame=requestAnimationFrame(wheelTick);
 }
 
@@ -181,7 +285,7 @@ function startWheel(){
   wheel.getAnimations().forEach(animation=>animation.cancel());
   wheelDecelerating=false;
   wheelRunning=true;
-  wheelAudioSector=-1;
+  wheelAudioCarry=0;
   unlockWheelAudio();
   wheelSpeed=Math.max(wheelSpeed,120);
   wheelLastTime=performance.now();
@@ -204,20 +308,21 @@ function stopWheel(result,token){
   const baseDelta=(target-wheelAngle+360)%360;
   const releaseSpeed=Math.max(wheelSpeed,90);
   const suspensePower=3.2;
-  const desiredDuration=10;
-  const desiredDistance=(releaseSpeed*desiredDuration)/suspensePower;
+  const duration=10;
+  const desiredDistance=(releaseSpeed*duration)/suspensePower;
   const rotations=Math.max(1,Math.round((desiredDistance-baseDelta)/360));
   const distance=baseDelta+(rotations*360);
-  const duration=(distance*suspensePower)/releaseSpeed;
   const startAngle=wheelAngle;
   const startTime=performance.now();
+  let previousTravelled=0;
   const decelerate=time=>{
     const elapsed=Math.min(duration,(time-startTime)/1000);
     const progress=elapsed/duration;
     const travelled=distance*(1-Math.pow(1-progress,suspensePower));
     wheelAngle=startAngle+travelled;
     wheel.style.transform=`rotate(${wheelAngle}deg)`;
-    updateWheelAudio(wheelAngle,releaseSpeed*Math.pow(1-progress,suspensePower-1));
+    updateWheelAudio(travelled-previousTravelled,releaseSpeed*Math.pow(1-progress,suspensePower-1));
+    previousTravelled=travelled;
     if(elapsed<duration){wheelFrame=requestAnimationFrame(decelerate);return}
     wheelAngle=target;
     wheel.style.transform=`rotate(${wheelAngle}deg)`;
@@ -252,7 +357,20 @@ function renderCompletedScreen(data){
 
 function renderScreen(data){
   const game=data.game;
+  const soundEvent=data.sound_event;
+  const soundEventId=String(soundEvent?.id||'');
+  if(screenSoundEventId===null)screenSoundEventId=soundEventId;
+  else if(soundEventId&&soundEventId!==screenSoundEventId){
+    screenSoundEventId=soundEventId;
+    if(Number(soundEvent.game_id)===Number(game?.id)){
+      if(soundEvent.type==='correct')playCorrectSound();
+      else if(soundEvent.type==='no_letter')playNoLetterSound();
+      else if(soundEvent.type==='no_consonants')playNoConsonantsSound();
+      else playWrongSound();
+    }
+  }
   currentGameId=Number(game?.id||0);
+  currentWheelSpinning=Number(game?.wheel_spinning||0);
   if(game?.status==='completed'){
     renderCompletedScreen(data);
     return;
@@ -286,8 +404,12 @@ function renderScreen(data){
   const nextSpinToken=Number(game?.wheel_spin_token||0);
   if(nextSpinToken!==wheelSpinToken){
     wheelSpinToken=nextSpinToken;
-    if(Number(game?.wheel_spinning)===1)startWheel();
-    else stopWheel(game?.wheel_result||'—',nextSpinToken);
+    const spinningState=Number(game?.wheel_spinning);
+    if(spinningState===1)startWheel();
+    else if(spinningState===2&&!wheelRunning&&!wheelDecelerating){
+      startWheel();
+      setTimeout(()=>stopWheel(game?.wheel_result||'—',nextSpinToken),250);
+    }else stopWheel(game?.wheel_result||'—',nextSpinToken);
   }else if(!wheelRunning&&!wheelDecelerating&&Number(game?.wheel_spinning)!==1)$('#reel-screen-wheel-result').textContent=game?.wheel_result||'—';
   $('#reel-screen-tables').innerHTML=data.tables.length?data.tables.slice().sort((a,b)=>Number(b.score)-Number(a.score)||Number(a.registration_order)-Number(b.registration_order)).map((item,index)=>`<div class="table-row ${Number(item.id)===Number(game?.current_table_id)?'current':''}"><b>${index+1}</b><span>${escapeHtml(item.name)}<small>${item.booked_at?'Prenotato':''}</small></span><strong>${Number(item.score)} pt</strong></div>`).join(''):'<p>Nessun tavolo registrato</p>';
 }
@@ -295,10 +417,12 @@ function renderScreen(data){
 async function refreshScreen(){try{const response=await fetch('api.php?action=chill-reel-state',{cache:'no-store'});const data=await response.json();if(!response.ok||data.error)throw new Error(data.error||'Errore stato');renderScreen(data)}catch(error){$('#reel-screen-board').innerHTML='<div class="screen-message">Schermo Chill Reel non disponibile</div>'}}
 async function postWheel(action){const response=await fetch(`api.php?action=${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game_id:currentGameId})});const data=await response.json();if(!response.ok||data.error)throw new Error(data.error||'Errore ruota');return data}
 const wheelElement=$('#reel-screen-wheel');
+$('#reel-screen-status').addEventListener('click',unlockWheelAudio);
+$('#reel-screen-status').addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();unlockWheelAudio()}});
 document.addEventListener('pointerdown',unlockWheelAudio,{capture:true});
 document.addEventListener('keydown',unlockWheelAudio,{capture:true});
 wheelElement.addEventListener('pointerdown',event=>{
-  if(event.button!==0||!currentGameId||wheelPointerPressed)return;
+  if(event.button!==0||!currentGameId||currentWheelSpinning!==0||wheelPointerPressed||wheelRunning||wheelDecelerating||wheelStartRequest)return;
   event.preventDefault();
   wheelPointerPressed=true;
   wheelElement.setPointerCapture(event.pointerId);

@@ -25,6 +25,6 @@
   </section>
   <section id="player-ranking-card" class="player-card ranking-card"><span class="kicker">CLASSIFICA</span><div id="player-ranking"></div></section>
 </main>
-<script src="assets/chill-reel-player.js?v=8"></script>
+<script src="assets/chill-reel-player.js?v=9"></script>
 </body>
 </html>

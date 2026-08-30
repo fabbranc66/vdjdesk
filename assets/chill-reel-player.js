@@ -7,7 +7,7 @@ const consonants=[...'BCDFGHJKLMNPQRSTVWXYZ'];
 const vowels=[...'AEIOU'];
 let token=localStorage.getItem(tokenKey)||'';
 let localIdentifier=localStorage.getItem(localIdentifierKey)||'';
-let playerState=null,spinPressed=false,spinRequest=null,actionView='choice';
+let playerState=null,spinPressed=false,spinLocked=false,spinRequest=null,actionView='choice';
 
 if(!/^[a-f0-9-]{36}$/i.test(localIdentifier)){
   localIdentifier=crypto.randomUUID();
@@ -154,8 +154,8 @@ $('#player-solve').addEventListener('submit',async event=>{
 
 const spinButton=$('#player-spin');
 spinButton.addEventListener('pointerdown',event=>{
-  if(event.button!==0||spinButton.disabled||spinPressed)return;
-  event.preventDefault();spinPressed=true;spinButton.setPointerCapture(event.pointerId);spinButton.classList.add('pressed');spinButton.textContent='RILASCIA PER FERMARLA';
+  if(event.button!==0||spinButton.disabled||spinPressed||spinLocked)return;
+  event.preventDefault();spinPressed=true;spinLocked=true;spinButton.setPointerCapture(event.pointerId);spinButton.classList.add('pressed');spinButton.textContent='RILASCIA PER FERMARLA';
   spinRequest=post('chill-reel-player-spin-start',{game_id:playerState.game.id,token});
 });
 
@@ -164,8 +164,8 @@ async function releaseSpin(){
   spinPressed=false;spinButton.classList.remove('pressed');spinButton.textContent='DECELERAZIONE…';actionView='choice';
   try{
     await spinRequest;render(await post('chill-reel-player-spin',{game_id:playerState.game.id,token}));
-    setTimeout(()=>post('chill-reel-player-spin-finish',{game_id:playerState.game.id,token}).then(render).catch(()=>refresh()),7000);
-  }catch(error){message(error.message,true)}finally{spinRequest=null}
+    setTimeout(()=>post('chill-reel-player-spin-finish',{game_id:playerState.game.id,token}).then(render).catch(()=>refresh()).finally(()=>{spinLocked=false}),11000);
+  }catch(error){spinLocked=false;message(error.message,true)}finally{spinRequest=null}
 }
 
 async function heartbeat(){if(!token)return;try{await post('chill-reel-player-heartbeat',{token})}catch(error){}}

@@ -85,6 +85,6 @@
 </main>
 <script src="assets/request.js?v=9"></script>
 <script src="assets/quiz-public.js?v=18"></script>
-<script src="assets/chill-reel-player.js?v=8"></script>
+<script src="assets/chill-reel-player.js?v=9"></script>
 </body>
 </html>

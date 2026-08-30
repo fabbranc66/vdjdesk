@@ -15,12 +15,13 @@ final class ChillReelService
             $game=$this->pdo->query("SELECT * FROM chill_reel_games ORDER BY (status IN ('booking','active')) DESC,id DESC LIMIT 1")->fetch();
         }
         $games=$this->pdo->query('SELECT id,name,status,updated_at FROM chill_reel_games ORDER BY id DESC')->fetchAll();
-        if (!$game) return ['game'=>null,'games'=>$games,'tables'=>[],'puzzles'=>[],'active_game'=>setting('active_quiz_game','none')];
+        if (!$game) return ['game'=>null,'games'=>$games,'tables'=>[],'puzzles'=>[],'active_game'=>setting('active_quiz_game','none'),'sound_event'=>null];
         $tables=$this->pdo->prepare("SELECT *,IF(status='active' AND is_online=1 AND last_seen_at>=DATE_SUB(NOW(),INTERVAL 8 SECOND),1,0) online FROM chill_reel_tables WHERE game_id=? ORDER BY registration_order,id");
         $tables->execute([(int)$game['id']]);
         $puzzles=$this->pdo->prepare('SELECT * FROM chill_reel_puzzles WHERE game_id=? ORDER BY sort_order,id');
         $puzzles->execute([(int)$game['id']]);
-        return ['game'=>$game,'games'=>$games,'tables'=>$tables->fetchAll(),'puzzles'=>$puzzles->fetchAll(),'active_game'=>setting('active_quiz_game','none')];
+        $soundEvent=json_decode(setting('chill_reel_sound_event',''),true);
+        return ['game'=>$game,'games'=>$games,'tables'=>$tables->fetchAll(),'puzzles'=>$puzzles->fetchAll(),'active_game'=>setting('active_quiz_game','none'),'sound_event'=>is_array($soundEvent)?$soundEvent:null];
     }
 
     public function create(array $data): array
@@ -156,7 +157,7 @@ final class ChillReelService
     public function startWheel(int $gameId): array
     {
         $this->requireGame($gameId);
-        $this->pdo->prepare("UPDATE chill_reel_games SET wheel_result='',wheel_spinning=1,wheel_spin_token=wheel_spin_token+1 WHERE id=?")->execute([$gameId]);
+        $this->pdo->prepare("UPDATE chill_reel_games SET wheel_result='',wheel_spinning=1,wheel_spin_token=wheel_spin_token+1 WHERE id=? AND wheel_spinning=0")->execute([$gameId]);
         return $this->state($gameId);
     }
 
@@ -165,20 +166,25 @@ final class ChillReelService
         $this->requireGame($gameId);
         $segments=['100','500','200','JOLLY','300','700','150','RADDOPPIA','400','250','600','PASSA','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
         $result=$segments[random_int(0,count($segments)-1)];
-        $this->pdo->prepare('UPDATE chill_reel_games SET wheel_result=?,wheel_spinning=2,wheel_spin_token=wheel_spin_token+1,wheel_spun_at=NOW() WHERE id=?')->execute([$result,$gameId]);
+        $this->pdo->prepare('UPDATE chill_reel_games SET wheel_result=?,wheel_spinning=2,wheel_spin_token=wheel_spin_token+1,wheel_spun_at=NOW() WHERE id=? AND wheel_spinning=1')->execute([$result,$gameId]);
         return $this->state($gameId);
     }
 
     public function finishWheel(int $gameId): array
     {
-        $state=$this->state($gameId);
-        if (!$state['game'] || (int)$state['game']['wheel_spinning']!==2) return $state;
-        $tableId=(int)($state['game']['current_table_id']??0);
-        $result=(string)($state['game']['wheel_result']??'');
-        if (!$tableId) throw new RuntimeException('Nessun giocatore di turno.');
-        $nextId=$this->nextTableId($state);
         $this->pdo->beginTransaction();
         try {
+            $claim=$this->pdo->prepare('UPDATE chill_reel_games SET wheel_spinning=3 WHERE id=? AND wheel_spinning=2');
+            $claim->execute([$gameId]);
+            if ($claim->rowCount()===0) {
+                $this->pdo->rollBack();
+                return $this->state($gameId);
+            }
+            $state=$this->state($gameId);
+            $tableId=(int)($state['game']['current_table_id']??0);
+            $result=(string)($state['game']['wheel_result']??'');
+            if (!$tableId) throw new RuntimeException('Nessun giocatore di turno.');
+            $nextId=$this->nextTableId($state);
             if ($result==='PASSA') {
                 $this->pdo->prepare('UPDATE chill_reel_games SET current_table_id=?,solve_enabled_table_id=NULL WHERE id=?')->execute([$nextId,$gameId]);
             } elseif (in_array($result,['ZERO','BANCAROTTA'],true)) {
@@ -319,6 +325,15 @@ final class ChillReelService
         $letters=(string)($puzzle['revealed_letters']??'');
         if (str_contains($letters,$letter)) throw new RuntimeException('Lettera già chiamata.');
         $occurrences=substr_count(mb_strtoupper((string)$puzzle['solution']),$letter);
+        preg_match_all('/[B-DF-HJ-NP-TV-Z]/',mb_strtoupper((string)$puzzle['solution']),$consonantMatches);
+        $solutionConsonants=array_values(array_unique($consonantMatches[0]??[]));
+        $remainingBefore=array_filter($solutionConsonants,static fn(string $consonant): bool=>!str_contains($letters,$consonant));
+        $remainingAfter=array_filter($solutionConsonants,static fn(string $consonant): bool=>!str_contains($letters.$letter,$consonant));
+        $consonantsFinished=!$isVowel
+            && $occurrences>0
+            && count($remainingBefore)===1
+            && in_array($letter,$remainingBefore,true)
+            && count($remainingAfter)===0;
         $tableScore=0;
         foreach ($state['tables'] as $table) if ((int)$table['id']===$tableId) $tableScore=(int)$table['score'];
         if ($isVowel && $tableScore<100) throw new RuntimeException('Servono almeno 100 punti per scegliere una vocale.');
@@ -340,6 +355,8 @@ final class ChillReelService
             $this->pdo->rollBack();
             throw $error;
         }
+        if ($occurrences===0) $this->publishSoundEvent($gameId,'no_letter');
+        elseif ($consonantsFinished) $this->publishSoundEvent($gameId,'no_consonants');
         $payload=$this->publicState($token);
         $payload['letter_result']=['letter'=>$letter,'occurrences'=>$occurrences,'points'=>$isVowel?-100:(int)$value*$occurrences,'vowel'=>$isVowel];
         return $payload;
@@ -357,6 +374,7 @@ final class ChillReelService
         $correct=$normalize($answer)!=='' && $normalize($answer)===$normalize((string)$puzzle['solution']);
         if ($correct) $this->nextPuzzle($gameId,$tableId);
         else $this->pdo->prepare('UPDATE chill_reel_games SET current_table_id=?,solve_enabled_table_id=NULL WHERE id=?')->execute([$this->nextTableId($state),$gameId]);
+        $this->publishSoundEvent($gameId,$correct?'correct':'wrong');
         $payload=$this->publicState($token);
         $payload['solve_correct']=$correct;
         return $payload;
@@ -405,6 +423,12 @@ final class ChillReelService
     {
         $check=$this->pdo->prepare('SELECT COUNT(*) FROM chill_reel_games WHERE id=?');$check->execute([$gameId]);
         if (!(int)$check->fetchColumn()) throw new RuntimeException('Manche Chill Reel non trovata.');
+    }
+
+    private function publishSoundEvent(int $gameId, string $type): void
+    {
+        $event=json_encode(['id'=>sprintf('%d-%d',hrtime(true),random_int(1000,9999)),'game_id'=>$gameId,'type'=>$type],JSON_THROW_ON_ERROR);
+        $this->pdo->prepare("INSERT INTO settings(`key`,value) VALUES('chill_reel_sound_event',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")->execute([$event]);
     }
 
     private function requireTable(int $gameId, int $tableId): void

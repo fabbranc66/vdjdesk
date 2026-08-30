@@ -8,14 +8,14 @@
   <link rel="stylesheet" href="assets/chill-reel-screen.css?v=2">
   <link rel="stylesheet" href="assets/chill-reel-wheel.css?v=5">
   <link rel="stylesheet" href="assets/chill-reel-board.css?v=7">
-  <style>.wheel-art text{font-family:Inter,Segoe UI,Arial,sans-serif;font-weight:400;stroke-linejoin:round}.wheel-number,.wheel-special{fill:#fff;stroke:#050505;stroke-width:3.4px;letter-spacing:-.5px}.wheel-number{font-size:22px}.wheel-special{font-size:16px}</style>
+  <style>.wheel-art text{font-family:Inter,Segoe UI,Arial,sans-serif;font-weight:400;stroke-linejoin:round}.wheel-number,.wheel-special{fill:#fff;stroke:#050505;stroke-width:3.4px;letter-spacing:-.5px}.wheel-number{font-size:22px}.wheel-special{font-size:16px}.status-pill[data-audio="on"]::after{content:" · AUDIO"}</style>
 </head>
 <body>
   <main class="reel-screen">
     <header>
       <div class="reel-brand"><img src="assets/images/kr-music-logo-transparent.png" alt="KR Music"><span><b>CHILL REEL</b><small>KR LIVE GAME</small></span></div>
       <div id="reel-screen-round" class="round-name">In attesa della manche</div>
-      <div id="reel-screen-status" class="status-pill">OFF</div>
+      <div id="reel-screen-status" class="status-pill" role="button" tabindex="0" title="Clicca per attivare gli effetti audio" style="cursor:pointer">OFF</div>
     </header>
     <section class="reel-stage">
       <div class="reel-main">
@@ -37,6 +37,6 @@
       </aside>
     </section>
   </main>
-  <script src="assets/chill-reel-screen.js?v=33"></script>
+  <script src="assets/chill-reel-screen.js?v=49"></script>
 </body>
 </html>
