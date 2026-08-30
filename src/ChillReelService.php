@@ -163,7 +163,7 @@ final class ChillReelService
     public function spinWheel(int $gameId): array
     {
         $this->requireGame($gameId);
-        $segments=['100','500','200','PASSA','300','700','150','RADDOPPIA','400','250','600','PERDI TURNO','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
+        $segments=['100','500','200','JOLLY','300','700','150','RADDOPPIA','400','250','600','PASSA','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
         $result=$segments[random_int(0,count($segments)-1)];
         $this->pdo->prepare('UPDATE chill_reel_games SET wheel_result=?,wheel_spinning=2,wheel_spin_token=wheel_spin_token+1,wheel_spun_at=NOW() WHERE id=?')->execute([$result,$gameId]);
         return $this->state($gameId);
@@ -179,9 +179,9 @@ final class ChillReelService
         $nextId=$this->nextTableId($state);
         $this->pdo->beginTransaction();
         try {
-            if (in_array($result,['PASSA','PERDI TURNO'],true)) {
+            if ($result==='PASSA') {
                 $this->pdo->prepare('UPDATE chill_reel_games SET current_table_id=?,solve_enabled_table_id=NULL WHERE id=?')->execute([$nextId,$gameId]);
-            } elseif ($result==='BANCAROTTA') {
+            } elseif (in_array($result,['ZERO','BANCAROTTA'],true)) {
                 $this->pdo->prepare('UPDATE chill_reel_tables SET score=0 WHERE id=? AND game_id=?')->execute([$tableId,$gameId]);
                 $this->pdo->prepare('UPDATE chill_reel_games SET current_table_id=?,solve_enabled_table_id=NULL WHERE id=?')->execute([$nextId,$gameId]);
             } elseif ($result==='RADDOPPIA') {

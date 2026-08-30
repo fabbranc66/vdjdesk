@@ -7,7 +7,7 @@
   <title>Chill Reel · Schermo</title>
   <link rel="stylesheet" href="assets/chill-reel-screen.css?v=2">
   <link rel="stylesheet" href="assets/chill-reel-wheel.css?v=5">
-  <link rel="stylesheet" href="assets/chill-reel-board.css?v=6">
+  <link rel="stylesheet" href="assets/chill-reel-board.css?v=7">
   <style>.wheel-art text{font-family:Inter,Segoe UI,Arial,sans-serif;font-weight:400;stroke-linejoin:round}.wheel-number,.wheel-special{fill:#fff;stroke:#050505;stroke-width:3.4px;letter-spacing:-.5px}.wheel-number{font-size:22px}.wheel-special{font-size:16px}</style>
 </head>
 <body>
@@ -37,6 +37,6 @@
       </aside>
     </section>
   </main>
-  <script src="assets/chill-reel-screen.js?v=23"></script>
+  <script src="assets/chill-reel-screen.js?v=33"></script>
 </body>
 </html>

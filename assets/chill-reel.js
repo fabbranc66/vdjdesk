@@ -1,6 +1,7 @@
 let chillReelState=null;
 let chillReelBoardPuzzleId=0;
 let chillReelBoardLetters=null;
+const chillReelSfxVolumeKey='kr_chill_reel_sfx_volume';
 
 function chillReelPayloadLines(value){return String(value||'').split(/\r?\n/).map(item=>item.trim()).filter(Boolean)}
 function chillReelBoardHtml(solution,letters,previousLetters){return String(solution||'').split(/\s+/).filter(Boolean).map(word=>`<span class="word">${[...word].map(char=>{const isLetter=/[A-ZÀ-ÖØ-Ý]/u.test(char);const revealed=isLetter&&letters.includes(char);const isNew=revealed&&previousLetters!==null&&!previousLetters.includes(char);return isLetter&&!revealed?'<i>_</i>':`<i class="${[!isLetter?'punctuation':'',isNew?'revealed-now':''].filter(Boolean).join(' ')}">${escapeHtml(char)}</i>`}).join('')}</span>`).join('')}
@@ -54,6 +55,18 @@ async function loadChillReelControl(gameId=0){
   try{renderChillReel(await api(`chill-reel-state${gameId?`&game_id=${gameId}`:''}`))}catch(error){toast(error.message)}
 }
 window.loadChillReelControl=loadChillReelControl;
+
+const chillReelSfxVolume=$('#chill-reel-sfx-volume');
+if(chillReelSfxVolume){
+  const savedVolume=Math.max(0,Math.min(100,Number(localStorage.getItem(chillReelSfxVolumeKey)??70)));
+  chillReelSfxVolume.value=String(savedVolume);
+  $('#chill-reel-sfx-volume-value').textContent=`${savedVolume}%`;
+  chillReelSfxVolume.addEventListener('input',event=>{
+    const volume=Math.max(0,Math.min(100,Number(event.target.value)));
+    localStorage.setItem(chillReelSfxVolumeKey,String(volume));
+    $('#chill-reel-sfx-volume-value').textContent=`${volume}%`;
+  });
+}
 
 $('#chill-reel-game-select')?.addEventListener('change',event=>loadChillReelControl(Number(event.target.value||0)));
 $('#chill-reel-create')?.addEventListener('click',async()=>{try{renderChillReel(await createChillReelFromForm());toast('Manche Chill Reel creata')}catch(error){toast(error.message)}});

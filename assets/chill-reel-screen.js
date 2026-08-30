@@ -1,12 +1,125 @@
 const $=selector=>document.querySelector(selector);
 const escapeHtml=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#039;','"':'&quot;'}[char]));
-const wheelSegments=['100','500','200','PASSA','300','700','150','RADDOPPIA','400','250','600','PERDI TURNO','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
+const wheelSegments=['100','500','200','JOLLY','300','700','150','RADDOPPIA','400','250','600','PASSA','100','800','350','JOLLY','200','500','300','BANCAROTTA','1000','400','250','PASSA'];
 let wheelSpinToken=0,wheelRunning=false,wheelDecelerating=false,wheelAngle=0,wheelSpeed=0,wheelFrame=0,wheelLastTime=0;
 let currentGameId=0,wheelPointerPressed=false,wheelStartRequest=null;
 let screenBoardPuzzleId=0,screenBoardLetters=null;
 let screenBoardSignature='';
+let wheelAudioContext=null,wheelAudioBuffer=null,wheelAudioSector=-1,wheelAudioAt=0;
+let letterRevealTimers=[];
 
-function boardHtml(solution,letters,previousLetters){return String(solution||'').split(/\s+/).filter(Boolean).map(word=>`<span class="word">${[...word].map(char=>{const isLetter=/[A-ZÀ-ÖØ-Ý]/u.test(char);const revealed=isLetter&&letters.includes(char);const isNew=revealed&&previousLetters!==null&&!previousLetters.includes(char);return isLetter&&!revealed?'<i>&nbsp;</i>':`<i class="${[!isLetter?'punctuation':'',isNew?'revealed-now':''].filter(Boolean).join(' ')}">${escapeHtml(char)}</i>`}).join('')}</span>`).join('')}
+function unlockWheelAudio(){
+  const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+  if(!AudioContextClass)return;
+  if(!wheelAudioContext){
+    wheelAudioContext=new AudioContextClass();
+    wheelAudioBuffer=wheelAudioContext.createBuffer(1,Math.ceil(wheelAudioContext.sampleRate*.035),wheelAudioContext.sampleRate);
+    const samples=wheelAudioBuffer.getChannelData(0);
+    for(let index=0;index<samples.length;index++)samples[index]=(Math.random()*2-1)*Math.pow(1-index/samples.length,3);
+  }
+  if(wheelAudioContext.state==='suspended')wheelAudioContext.resume().catch(()=>{});
+}
+
+function effectsVolume(){
+  return Math.max(0,Math.min(1,Number(localStorage.getItem('kr_chill_reel_sfx_volume')??70)/100));
+}
+
+function updateWheelAudio(angle,speed){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const sector=Math.floor((((angle%360)+360)%360)/(360/wheelSegments.length));
+  if(sector===wheelAudioSector)return;
+  wheelAudioSector=sector;
+  const now=performance.now();
+  if(now-wheelAudioAt<14)return;
+  wheelAudioAt=now;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  const start=wheelAudioContext.currentTime;
+  const clack=wheelAudioContext.createBufferSource();
+  const filter=wheelAudioContext.createBiquadFilter();
+  const clackGain=wheelAudioContext.createGain();
+  clack.buffer=wheelAudioBuffer;
+  clack.playbackRate.value=.9+Math.min(.22,Math.max(0,speed)/4200);
+  filter.type='bandpass';
+  filter.frequency.value=820+Math.min(260,Math.max(0,speed)*.22);
+  filter.Q.value=.75;
+  clackGain.gain.setValueAtTime(.13*volume,start);
+  clackGain.gain.exponentialRampToValueAtTime(.0001,start+.032);
+  clack.connect(filter).connect(clackGain).connect(wheelAudioContext.destination);
+  clack.start(start);
+  const impact=wheelAudioContext.createOscillator();
+  const impactGain=wheelAudioContext.createGain();
+  impact.type='sine';
+  impact.frequency.setValueAtTime(185+Math.min(45,Math.max(0,speed)*.045),start);
+  impact.frequency.exponentialRampToValueAtTime(125,start+.026);
+  impactGain.gain.setValueAtTime(.045*volume,start);
+  impactGain.gain.exponentialRampToValueAtTime(.0001,start+.028);
+  impact.connect(impactGain).connect(wheelAudioContext.destination);
+  impact.start(start);
+  impact.stop(start+.03);
+}
+
+function playLetterRevealSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  const start=wheelAudioContext.currentTime;
+  [0,1].forEach(harmonic=>{
+    const oscillator=wheelAudioContext.createOscillator();
+    const gain=wheelAudioContext.createGain();
+    oscillator.type='sine';
+    oscillator.frequency.setValueAtTime(harmonic?1040:520,start);
+    oscillator.frequency.exponentialRampToValueAtTime(harmonic?880:440,start+.16);
+    gain.gain.setValueAtTime((harmonic?.025:.075)*volume,start);
+    gain.gain.exponentialRampToValueAtTime(.0001,start+(harmonic?.16:.24));
+    oscillator.connect(gain).connect(wheelAudioContext.destination);
+    oscillator.start(start);
+    oscillator.stop(start+(harmonic?.17:.25));
+  });
+}
+
+function playWheelResultSound(){
+  unlockWheelAudio();
+  if(!wheelAudioContext||wheelAudioContext.state!=='running')return;
+  const volume=effectsVolume();
+  if(volume<=0)return;
+  const start=wheelAudioContext.currentTime;
+  [659.25,987.77].forEach((frequency,index)=>{
+    const oscillator=wheelAudioContext.createOscillator();
+    const gain=wheelAudioContext.createGain();
+    oscillator.type='sine';
+    oscillator.frequency.setValueAtTime(frequency,start+index*.035);
+    gain.gain.setValueAtTime((index?.045:.085)*volume,start+index*.035);
+    gain.gain.exponentialRampToValueAtTime(.0001,start+.75+index*.08);
+    oscillator.connect(gain).connect(wheelAudioContext.destination);
+    oscillator.start(start+index*.035);
+    oscillator.stop(start+.82+index*.08);
+  });
+}
+
+function scheduleLetterRevealSounds(count){
+  letterRevealTimers.forEach(clearTimeout);
+  letterRevealTimers=[];
+  for(let index=0;index<count;index++)letterRevealTimers.push(setTimeout(playLetterRevealSound,index*1000+400));
+}
+
+function boardHtml(solution,letters,previousLetters){
+  const newLetters=previousLetters===null?'':[...letters].filter(letter=>!previousLetters.includes(letter)).join('');
+  let revealIndex=0;
+  const html=String(solution||'').split(/\s+/).filter(Boolean).map(word=>`<span class="word">${[...word].map(char=>{
+    const isLetter=/[A-ZÀ-ÖØ-Ý]/u.test(char);
+    const revealed=isLetter&&letters.includes(char);
+    if(isLetter&&!revealed)return '<i>&nbsp;</i>';
+    const isNew=revealed&&newLetters.includes(char);
+    const sequence=isNew?revealIndex++:-1;
+    const classes=[!isLetter?'punctuation':'',isNew?'revealed-sequence':''].filter(Boolean).join(' ');
+    const style=isNew?` style="--reveal-delay:${sequence}s"`:'';
+    return `<i class="${classes}"${style}>${escapeHtml(char)}</i>`;
+  }).join('')}</span>`).join('');
+  return {html,revealCount:revealIndex};
+}
 
 function prepareWheel(){
   const wheel=$('#reel-screen-wheel');
@@ -18,7 +131,7 @@ function prepareWheel(){
   const center=140;
   const radius=134;
   const labelRadius=108;
-  const specialLabels={'RADDOPPIA':'X2','PERDI TURNO':'SALTA','BANCAROTTA':'ZERO'};
+  const specialLabels={'RADDOPPIA':'X2','BANCAROTTA':'ZERO'};
   const colors=['#ef476f','#ffd166','#06d6a0','#118ab2','#f78c6b','#9b5de5','#00bbf9','#f15bb5'];
   const polar=(angle,distance)=>({x:center+Math.cos(angle*Math.PI/180)*distance,y:center+Math.sin(angle*Math.PI/180)*distance});
   wheelSegments.forEach((label,index)=>{
@@ -55,9 +168,10 @@ function wheelTick(time){
   if(!wheelRunning)return;
   const elapsed=Math.min(.05,(time-wheelLastTime)/1000||0);
   wheelLastTime=time;
-  wheelSpeed=Math.min(920,wheelSpeed+1050*elapsed);
+  wheelSpeed=Math.min(500,wheelSpeed+1050*elapsed);
   wheelAngle=(wheelAngle+wheelSpeed*elapsed)%360;
   $('#reel-screen-wheel').style.transform=`rotate(${wheelAngle}deg)`;
+  updateWheelAudio(wheelAngle,wheelSpeed);
   wheelFrame=requestAnimationFrame(wheelTick);
 }
 
@@ -67,6 +181,8 @@ function startWheel(){
   wheel.getAnimations().forEach(animation=>animation.cancel());
   wheelDecelerating=false;
   wheelRunning=true;
+  wheelAudioSector=-1;
+  unlockWheelAudio();
   wheelSpeed=Math.max(wheelSpeed,120);
   wheelLastTime=performance.now();
   $('#reel-screen-wheel-result').textContent='…';
@@ -88,7 +204,7 @@ function stopWheel(result,token){
   const baseDelta=(target-wheelAngle+360)%360;
   const releaseSpeed=Math.max(wheelSpeed,90);
   const suspensePower=3.2;
-  const desiredDuration=6.4;
+  const desiredDuration=10;
   const desiredDistance=(releaseSpeed*desiredDuration)/suspensePower;
   const rotations=Math.max(1,Math.round((desiredDistance-baseDelta)/360));
   const distance=baseDelta+(rotations*360);
@@ -101,12 +217,14 @@ function stopWheel(result,token){
     const travelled=distance*(1-Math.pow(1-progress,suspensePower));
     wheelAngle=startAngle+travelled;
     wheel.style.transform=`rotate(${wheelAngle}deg)`;
+    updateWheelAudio(wheelAngle,releaseSpeed*Math.pow(1-progress,suspensePower-1));
     if(elapsed<duration){wheelFrame=requestAnimationFrame(decelerate);return}
     wheelAngle=target;
     wheel.style.transform=`rotate(${wheelAngle}deg)`;
     wheelSpeed=0;
     wheelDecelerating=false;
     $('#reel-screen-wheel-result').textContent=result||'—';
+    playWheelResultSound();
     postWheel('chill-reel-spin-finish').then(renderScreen).catch(()=>{});
   };
   wheelFrame=requestAnimationFrame(decelerate);
@@ -149,7 +267,18 @@ function renderScreen(data){
   $('#reel-screen-status').classList.toggle('on',data.active_game==='chill_reel');
   $('#reel-screen-category').textContent=active?.category||(game?.status==='booking'?'PRENOTAZIONE':'CHILL REEL');
   const boardSignature=active?`${active.id}|${active.solution}|${revealedLetters}`:`empty|${game?.status||''}`;
-  if(boardSignature!==screenBoardSignature){$('#reel-screen-board').innerHTML=active?boardHtml(active.solution,revealedLetters,screenBoardLetters):`<div class="screen-message">${game?.status==='booking'?'Prenotatevi: il primo tavolo inizierà la manche':'La manche sta per iniziare'}</div>`;screenBoardSignature=boardSignature}
+  if(boardSignature!==screenBoardSignature){
+    if(active){
+      const board=boardHtml(active.solution,revealedLetters,screenBoardLetters);
+      $('#reel-screen-board').innerHTML=board.html;
+      scheduleLetterRevealSounds(board.revealCount);
+    }else{
+      letterRevealTimers.forEach(clearTimeout);
+      letterRevealTimers=[];
+      $('#reel-screen-board').innerHTML=`<div class="screen-message">${game?.status==='booking'?'Prenotatevi: il primo tavolo inizierà la manche':'La manche sta per iniziare'}</div>`;
+    }
+    screenBoardSignature=boardSignature;
+  }
   screenBoardLetters=active?revealedLetters:null;
   $('#reel-screen-turn').textContent=currentTable?.name||(game?.status==='booking'?'Prenotazione aperta':'—');
   $('#reel-screen-progress').textContent=`${activeIndex} / ${data.puzzles.length}`;
@@ -166,6 +295,8 @@ function renderScreen(data){
 async function refreshScreen(){try{const response=await fetch('api.php?action=chill-reel-state',{cache:'no-store'});const data=await response.json();if(!response.ok||data.error)throw new Error(data.error||'Errore stato');renderScreen(data)}catch(error){$('#reel-screen-board').innerHTML='<div class="screen-message">Schermo Chill Reel non disponibile</div>'}}
 async function postWheel(action){const response=await fetch(`api.php?action=${action}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({game_id:currentGameId})});const data=await response.json();if(!response.ok||data.error)throw new Error(data.error||'Errore ruota');return data}
 const wheelElement=$('#reel-screen-wheel');
+document.addEventListener('pointerdown',unlockWheelAudio,{capture:true});
+document.addEventListener('keydown',unlockWheelAudio,{capture:true});
 wheelElement.addEventListener('pointerdown',event=>{
   if(event.button!==0||!currentGameId||wheelPointerPressed)return;
   event.preventDefault();

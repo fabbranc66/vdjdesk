@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="assets/playlists-simple.css?v=5">
   <link rel="stylesheet" href="assets/playlist-integrator.css?v=7">
 <link rel="stylesheet" href="assets/quiz.css?v=13">
-  <link rel="stylesheet" href="assets/chill-reel.css?v=1">
+  <link rel="stylesheet" href="assets/chill-reel.css?v=2">
   <link rel="stylesheet" href="assets/chill-reel-players.css?v=1">
   <link rel="stylesheet" href="assets/chill-reel-board.css?v=6">
   <link rel="stylesheet" href="assets/audio-analysis.css?v=38">
@@ -197,7 +197,7 @@
     </section>
 
     <section class="view" id="view-chill-reel">
-      <div class="section-head"><div><span class="kicker">GIOCO A TAVOLI</span><h2>Regia Chill Reel</h2><p>Una manche padre, più frasi figlie, turno ciclico dall'ordine di iscrizione.</p></div><div class="chill-reel-head-actions"><a class="button ghost" href="chill-reel-player.php" target="_blank">Pagina player ↗</a><a class="button ghost" href="quiz-screen.php" target="_blank">Schermo esterno ↗</a><button type="button" class="button ghost" data-public-module="quiz">Quiz Live: OFF</button><span id="chill-reel-game-status" class="badge">Non attivo</span><button type="button" class="button ghost" id="chill-reel-activate" data-public-game="chill_reel">Chill Reel: OFF</button></div></div>
+      <div class="section-head"><div><span class="kicker">GIOCO A TAVOLI</span><h2>Regia Chill Reel</h2><p>Una manche padre, più frasi figlie, turno ciclico dall'ordine di iscrizione.</p></div><div class="chill-reel-head-actions"><a class="button ghost" href="chill-reel-player.php" target="_blank">Pagina player ↗</a><a class="button ghost" href="quiz-screen.php" target="_blank">Schermo esterno ↗</a><label class="chill-reel-volume">Effetti <input id="chill-reel-sfx-volume" type="range" min="0" max="100" step="5" value="70"><output id="chill-reel-sfx-volume-value">70%</output></label><button type="button" class="button ghost" data-public-module="quiz">Quiz Live: OFF</button><span id="chill-reel-game-status" class="badge">Non attivo</span><button type="button" class="button ghost" id="chill-reel-activate" data-public-game="chill_reel">Chill Reel: OFF</button></div></div>
       <article class="panel chill-reel-setup">
         <div class="panel-label"><span>PREPARAZIONE MANCHE</span></div>
         <div class="chill-reel-setup-grid">
@@ -331,5 +331,5 @@
   <script src="assets/vdj-years.js?v=5"></script>
   <script src="assets/playlist-builder.js?v=21"></script>
 <script src="assets/quiz-control.js?v=28"></script>
-  <script src="assets/chill-reel.js?v=15"></script>
+  <script src="assets/chill-reel.js?v=16"></script>
 </body></html>
